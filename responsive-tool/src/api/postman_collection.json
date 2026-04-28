@@ -1,0 +1,27 @@
+{
+  "info": { "name": "Responsive Tool API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "variable": [{ "key": "base_url", "value": "http://localhost:8000" }, { "key": "token", "value": "" }],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        { "name": "Get Token", "request": { "method": "POST", "url": "{{base_url}}/api/auth/token/", "body": { "mode": "raw", "raw": "{\"email\":\"user@example.com\",\"password\":\"password123\"}", "options": { "raw": { "language": "json" } } } } },
+        { "name": "Refresh Token", "request": { "method": "POST", "url": "{{base_url}}/api/auth/token/refresh/", "body": { "mode": "raw", "raw": "{\"refresh\":\"<refresh_token>\"}", "options": { "raw": { "language": "json" } } } } }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        { "name": "Register", "request": { "method": "POST", "url": "{{base_url}}/api/users/register/", "body": { "mode": "raw", "raw": "{\"username\":\"testuser\",\"email\":\"user@example.com\",\"password\":\"password123\"}", "options": { "raw": { "language": "json" } } } } },
+        { "name": "Me", "request": { "method": "GET", "url": "{{base_url}}/api/users/me/", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    },
+    {
+      "name": "Scanner",
+      "item": [
+        { "name": "Trigger Scan", "request": { "method": "POST", "url": "{{base_url}}/api/scanner/scan/", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"url\":\"https://example.com\"}", "options": { "raw": { "language": "json" } } } } },
+        { "name": "Poll Status", "request": { "method": "GET", "url": "{{base_url}}/api/scanner/scan/1/status/", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    }
+  ]
+}

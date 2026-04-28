@@ -1,42 +1,34 @@
 # ── Frontend ──────────────────────────────────────────────
-frontend/node_modules/
-frontend/build/
-frontend/.env.local
-frontend/.env.development.local
-frontend/.env.test.local
-frontend/.env.production.local
-frontend/npm-debug.log*
-frontend/yarn-debug.log*
-frontend/yarn-error.log*
+src/frontend/node_modules/
+src/frontend/build/
+src/frontend/.env.local
+src/frontend/.env.development.local
+src/frontend/.env.test.local
+src/frontend/.env.production.local
+src/frontend/npm-debug.log*
 
 # ── Backend ───────────────────────────────────────────────
-backend/venv/
-backend/__pycache__/
-backend/**/__pycache__/
-backend/**/*.pyc
-backend/**/*.pyo
-backend/.env
-backend/staticfiles/
-backend/media/
-backend/db.sqlite3
+venv/
+src/backend/**/__pycache__/
+src/backend/**/*.pyc
+src/backend/**/*.pyo
+src/backend/staticfiles/
+src/backend/media/
+src/backend/db.sqlite3
+.env
 
 # ── Python ────────────────────────────────────────────────
 *.pyc
 *.pyo
-*.pyd
 __pycache__/
 *.egg-info/
 dist/
 build/
-.eggs/
 
 # ── OS ────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-desktop.ini
 
 # ── IDE ───────────────────────────────────────────────────
 .vscode/
 .idea/
-*.suo
-*.user
