@@ -2,6 +2,7 @@ import logging
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from django.db.models import Prefetch
 
 from .models import ScanURL, ScanReport
 from .serializers import ScanURLSerializer, ScanReportSerializer, ScanTriggerSerializer
@@ -15,7 +16,10 @@ class ScanURLViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        return ScanURL.objects.all().prefetch_related("reports")
+        reports_qs = ScanReport.objects.order_by("id")
+        return ScanURL.objects.all().prefetch_related(
+            Prefetch("reports", queryset=reports_qs)
+        )
 
 
 class ScanReportViewSet(viewsets.ReadOnlyModelViewSet):
