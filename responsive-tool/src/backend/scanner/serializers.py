@@ -47,8 +47,30 @@ class ScanReportSerializer(serializers.ModelSerializer):
     def get_resolution_advice(self, obj): return self._processed(obj).get("resolution_advice", [])
 
 
+class ScanReportListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views — excludes screenshots and raw_result."""
+    verdict        = serializers.SerializerMethodField()
+    verdict_label  = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScanReport
+        fields = ("id", "status", "score", "verdict", "verdict_label", "created_at", "updated_at")
+        read_only_fields = fields
+
+    def _processed(self, obj):
+        cache_attr = "_processed_cache"
+        if hasattr(obj, cache_attr):
+            return getattr(obj, cache_attr)
+        cached = (obj.raw_result or {}).get("processed") or {}
+        setattr(obj, cache_attr, cached)
+        return cached
+
+    def get_verdict(self, obj):       return self._processed(obj).get("verdict")
+    def get_verdict_label(self, obj): return self._processed(obj).get("verdict_label")
+
+
 class ScanURLSerializer(serializers.ModelSerializer):
-    reports       = ScanReportSerializer(many=True, read_only=True)
+    reports       = ScanReportListSerializer(many=True, read_only=True)
     latest_report = serializers.SerializerMethodField()
 
     class Meta:
@@ -58,7 +80,7 @@ class ScanURLSerializer(serializers.ModelSerializer):
 
     def get_latest_report(self, obj):
         report = obj.reports.first()
-        return ScanReportSerializer(report).data if report else None
+        return ScanReportListSerializer(report).data if report else None
 
     def create(self, validated_data):
         validated_data["user"] = self.context["request"].user

@@ -6,6 +6,7 @@ import { MdLaptop } from "react-icons/md";
 import { TbWorld } from "react-icons/tb";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
+import DeviceFrame from "../components/DeviceFrame";
 
 const VERDICT_CFG = {
   good:      { icon: HiOutlineCheckCircle,        color: "text-emerald-500", bg: "bg-emerald-50 border-emerald-200",  label: "Good"      },
@@ -75,14 +76,103 @@ function RecentItem({ item }) {
   );
 }
 
+// ── Live Preview ──────────────────────────────────────────────────────────────
+const PREVIEW_DEVICES = [
+  { key: "mobile",  deviceName: "Mobile",  width: 375,  height: 812  },
+  { key: "tablet",  deviceName: "Tablet",  width: 768,  height: 1024 },
+  { key: "desktop", deviceName: "Desktop", width: 1440, height: 900  },
+];
+
+const PREVIEW_SCALE = 0.5;
+
+function LivePreviewSection({ defaultUrl }) {
+  const [previewUrl, setPreviewUrl] = useState(defaultUrl || "");
+  const [activeUrl,  setActiveUrl]  = useState(defaultUrl || "");
+
+  // Sync if the parent resolves a URL after mount (data loads async)
+  useEffect(() => {
+    if (defaultUrl && !activeUrl) {
+      setPreviewUrl(defaultUrl);
+      setActiveUrl(defaultUrl);
+    }
+  }, [defaultUrl, activeUrl]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const trimmed = previewUrl.trim();
+    if (trimmed) setActiveUrl(trimmed);
+  };
+
+  return (
+    <div className="glass rounded-2xl p-5 shadow-glass flex flex-col gap-4">
+      {/* Header + URL input */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-surface-body flex items-center gap-2">
+            <TbWorld size={15} className="text-accent-500" />
+            Live Preview
+          </h2>
+          <p className="mt-0.5 text-xs text-surface-muted">
+            Interactive preview at each breakpoint — proxied to bypass X-Frame-Options.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex gap-2 sm:w-80">
+          <input
+            type="url"
+            value={previewUrl}
+            onChange={(e) => setPreviewUrl(e.target.value)}
+            placeholder="https://example.com"
+            className="flex-1 rounded-xl border border-surface-border bg-white px-3 py-2 text-xs text-surface-body placeholder-surface-muted outline-none transition focus:border-accent-400 focus:ring-2 focus:ring-accent-400/20"
+          />
+          <button
+            type="submit"
+            className="rounded-xl bg-accent-500 px-4 py-2 text-xs font-semibold text-white shadow-orange-glow transition hover:bg-accent-600 active:scale-95"
+          >
+            Load
+          </button>
+        </form>
+      </div>
+
+      {/* Device frames */}
+      {activeUrl ? (
+        <div className="flex flex-wrap gap-6 justify-center">
+          {PREVIEW_DEVICES.map(({ key, deviceName, width, height }) => (
+            <DeviceFrame
+              key={`${key}-${activeUrl}`}   // remount when URL changes
+              url={activeUrl}
+              deviceName={deviceName}
+              width={width}
+              height={height}
+              scale={PREVIEW_SCALE}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-2 py-10 text-surface-muted">
+          <FiMonitor size={28} className="opacity-30" />
+          <p className="text-xs">Enter a URL above to see the live preview.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [urls, setUrls]       = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/scanner/urls/")
+    const controller = new AbortController();
+    api.get("/scanner/urls/", { signal: controller.signal })
       .then(({ data }) => setUrls(data))
+      .catch((err) => {
+        if (err.name !== "CanceledError" && err.name !== "AbortError") {
+          // unauthenticated or network error — show empty state
+        }
+      })
       .finally(() => setLoading(false));
+    return () => controller.abort();
   }, []);
 
   // Derived stats
@@ -117,6 +207,9 @@ export default function Dashboard() {
   );
 
   const recent = [...urls].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+
+  // Most recently scanned URL — used as the default live preview target
+  const mostRecentUrl = recent[0]?.url || "";
 
   return (
     <div className="flex h-full min-h-screen w-full flex-col bg-surface-bg">
@@ -280,6 +373,9 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+
+          {/* Live Preview */}
+          <LivePreviewSection defaultUrl={mostRecentUrl} />
 
         </main>
       </div>

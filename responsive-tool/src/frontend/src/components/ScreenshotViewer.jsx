@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { FiSmartphone, FiTablet, FiMonitor, FiMaximize2, FiX, FiLock } from "react-icons/fi";
 import { MdLaptop } from "react-icons/md";
 import { HiOutlineCamera } from "react-icons/hi2";
+import { TbLiveView } from "react-icons/tb";
+import LiveViewPanel from "./LiveViewPanel";
 
 const DEVICES = [
   { key: "mobile",  label: "Mobile",  width: 375,  Icon: FiSmartphone, frameW: 260,  screenH: 500, isPhone: true  },
@@ -194,64 +196,95 @@ function Lightbox({ device, src, onClose }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading }) {
+export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading, activeUrl }) {
   const [lightbox, setLightbox] = useState(null);
+  const [viewMode, setViewMode] = useState("screenshots"); // "screenshots" | "live"
   const statusMap = Object.fromEntries((deviceStatus || []).map((d) => [d.device, d]));
   const lightboxDevice = lightbox ? DEVICES.find((x) => x.key === lightbox) : null;
 
   return (
     <>
-      <div className="glass rounded-2xl border border-surface-border shadow-glass">
-        <div className="overflow-x-auto scrollbar-thin p-5 pb-4">
-          <div className="flex gap-6 items-end" style={{ minWidth: "max-content" }}>
-            {DEVICES.map(({ key, label, width, Icon, frameW, screenH, isPhone }) => {
-              const src = screenshots?.[key];
-              const ds  = statusMap[key];
-              const statusCfg = ds ? STATUS_STYLE[ds.status] : null;
+      {/* Mode toggle */}
+      <div className="mb-3 flex gap-1 rounded-xl border border-surface-border bg-white/60 p-1 w-fit">
+        <button
+          onClick={() => setViewMode("screenshots")}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            viewMode === "screenshots"
+              ? "bg-accent-500 text-white shadow-sm"
+              : "text-surface-muted hover:text-surface-body"
+          }`}
+        >
+          <HiOutlineCamera size={13} />
+          Screenshots
+        </button>
+        <button
+          onClick={() => setViewMode("live")}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            viewMode === "live"
+              ? "bg-accent-500 text-white shadow-sm"
+              : "text-surface-muted hover:text-surface-body"
+          }`}
+        >
+          <TbLiveView size={13} />
+          Live View
+        </button>
+      </div>
 
-              return (
-                <div key={key} className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-1.5 self-start">
-                    <Icon size={12} className="text-surface-muted" />
-                    <span className="text-xs font-semibold text-surface-body">{label}</span>
-                    <span className="text-xs text-stone-400">{width}px</span>
-                    {ds && <span className={`h-1.5 w-1.5 rounded-full ${statusCfg?.dot}`} />}
-                  </div>
+      {viewMode === "live" ? (
+        <LiveViewPanel url={activeUrl} />
+      ) : (
+        <div className="glass rounded-2xl border border-surface-border shadow-glass">
+          <div className="overflow-x-auto scrollbar-thin p-5 pb-4">
+            <div className="flex gap-6 items-end" style={{ minWidth: "max-content" }}>
+              {DEVICES.map(({ key, label, width, Icon, frameW, screenH, isPhone }) => {
+                const src = screenshots?.[key];
+                const ds  = statusMap[key];
+                const statusCfg = ds ? STATUS_STYLE[ds.status] : null;
 
-                  {isPhone ? (
-                    <PhoneShell
-                      src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
-                      onExpand={() => src && !isLoading && setLightbox(key)}
-                    />
-                  ) : (
-                    <BrowserShell
-                      src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
-                      label={label} width={width} status={ds?.status}
-                      onExpand={() => src && !isLoading && setLightbox(key)}
-                    />
-                  )}
-
-                  {ds && !isLoading && (
-                    <div className="flex flex-wrap items-center gap-1.5 self-start">
-                      {ds.issue_count > 0 && (
-                        <span className="text-xs text-surface-muted">
-                          {ds.issue_count} issue{ds.issue_count !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {ds.probes?.overflow_count > 0 && (
-                        <span className="text-xs text-stone-400">{ds.probes.overflow_count} overflow</span>
-                      )}
-                      {ds.probes?.small_targets > 0 && (
-                        <span className="text-xs text-stone-400">{ds.probes.small_targets} small targets</span>
-                      )}
+                return (
+                  <div key={key} className="flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-1.5 self-start">
+                      <Icon size={12} className="text-surface-muted" />
+                      <span className="text-xs font-semibold text-surface-body">{label}</span>
+                      <span className="text-xs text-stone-400">{width}px</span>
+                      {ds && <span className={`h-1.5 w-1.5 rounded-full ${statusCfg?.dot}`} />}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+
+                    {isPhone ? (
+                      <PhoneShell
+                        src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
+                        onExpand={() => src && !isLoading && setLightbox(key)}
+                      />
+                    ) : (
+                      <BrowserShell
+                        src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
+                        label={label} width={width} status={ds?.status}
+                        onExpand={() => src && !isLoading && setLightbox(key)}
+                      />
+                    )}
+
+                    {ds && !isLoading && (
+                      <div className="flex flex-wrap items-center gap-1.5 self-start">
+                        {ds.issue_count > 0 && (
+                          <span className="text-xs text-surface-muted">
+                            {ds.issue_count} issue{ds.issue_count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {ds.probes?.overflow_count > 0 && (
+                          <span className="text-xs text-stone-400">{ds.probes.overflow_count} overflow</span>
+                        )}
+                        {ds.probes?.small_targets > 0 && (
+                          <span className="text-xs text-stone-400">{ds.probes.small_targets} small targets</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Portal lightbox — always renders at document.body level */}
       {lightbox && screenshots?.[lightbox] && lightboxDevice && (

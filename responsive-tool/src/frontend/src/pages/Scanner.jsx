@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, forwardRef } from "react";
 import { TbWorld } from "react-icons/tb";
 import { FiSmartphone, FiTablet, FiMonitor, FiClock, FiX } from "react-icons/fi";
 import { MdLaptop } from "react-icons/md";
@@ -42,7 +42,7 @@ function pushHistory(url, list) {
 }
 
 // ── UrlInput ─────────────────────────────────────────────────────────────────
-function UrlInput({ value, onChange, onSubmit, loading, stepLabel }) {
+const UrlInput = forwardRef(function UrlInput({ value, onChange, onSubmit, loading, stepLabel }, _ref) {
   const [history, setHistory]     = useState(loadHistory);
   const [open, setOpen]           = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
@@ -159,7 +159,7 @@ function UrlInput({ value, onChange, onSubmit, loading, stepLabel }) {
       )}
     </div>
   );
-}
+});
 
 // ── Scanner ───────────────────────────────────────────────────────────────────
 export default function Scanner() {
@@ -297,6 +297,7 @@ export default function Scanner() {
                 screenshots={result?.screenshots}
                 deviceStatus={result?.device_status}
                 isLoading={loading}
+                activeUrl={activeUrl}
               />
             </div>
 

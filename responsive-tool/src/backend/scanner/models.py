@@ -11,7 +11,8 @@ class ScanURL(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.user.email} — {self.url}"
+        user_label = self.user.email if self.user else "anonymous"
+        return f"{user_label} — {self.url}"
 
 
 class ScanReport(models.Model):

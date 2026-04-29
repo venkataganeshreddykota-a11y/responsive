@@ -1,0 +1,52 @@
+﻿<!doctype html>
+<html lang="en">
+
+<head><script>
+// Neutralize Service Workers
+if ('serviceWorker' in navigator) {
+  Object.defineProperty(navigator, 'serviceWorker', {
+    value: {
+      register: function() { return Promise.reject(new Error('Service Workers disabled by proxy')); },
+      ready: new Promise(function() {}),
+      getRegistrations: function() { return Promise.resolve([]); }
+    },
+    configurable: true
+  });
+}
+
+(function() {
+  var _PROXY = '/api/scanner/proxy/?url=';
+  var _ORIGIN = 'https://lifecykul.in';
+
+  function toProxyUrl(url) {
+    if (!url || url.startsWith('data:') || url.startsWith('javascript:') || url.startsWith('#')) return url;
+    if (url.startsWith('//')) url = 'https:' + url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = _ORIGIN + (url.startsWith('/') ? '' : '/') + url;
+    }
+    // Don't double-proxy
+    if (url.indexOf('/api/scanner/proxy/') !== -1) return url;
+    return _PROXY + encodeURIComponent(url);
+  }
+
+  // Intercept window.location.href assignments via a polling approach
+  // (Object.defineProperty on window.location throws in all modern browsers)
+  var _lastHref = window.location.href;
+  var _origAssign = window.location.assign.bind(window.location);
+  var _origReplace = window.location.replace.bind(window.location);
+
+  try {
+    window.location.assign = function(url) { _origAssign(toProxyUrl(url)); };
+    window.location.replace = function(url) { _origReplace(toProxyUrl(url)); };
+  } catch(e) {}
+
+  // Intercept history.pushState / replaceState
+  var _push = history.pushState.bind(history);
+  var _replace = history.replaceState.bind(history);
+  history.pushState = function(state, title, url) {
+    if (url) url = toProxyUrl(url);
+    return _push(state, title, url);
+  };
+  history.replaceState = function(state, title, url) {
+    if (url) url = toProxyUrl(url);
+    return _replace(state, title, url

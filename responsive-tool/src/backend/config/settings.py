@@ -3,9 +3,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from datetime import timedelta
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR.parent.parent / ".env")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
 DEBUG = os.getenv("DEBUG", "True") == "True"
@@ -35,10 +34,13 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # XFrameOptionsMiddleware removed — iframe_proxy handles framing headers per-response
 ]
 
-ROOT_URLCONF = "config.urls"
+# Prevent SecurityMiddleware from injecting X-Frame-Options and X-Content-Type-Options
+# on proxy responses — iframe_proxy manages these headers explicitly
+X_FRAME_OPTIONS = "ALLOWALL"
+SECURE_CONTENT_TYPE_NOSNIFF = False
 
 TEMPLATES = [
     {
@@ -56,6 +58,7 @@ TEMPLATES = [
     },
 ]
 
+ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
