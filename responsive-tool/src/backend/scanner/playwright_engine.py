@@ -1,9 +1,23 @@
 import base64
 import logging
+import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
-from .devices import DEVICE_LIBRARY, DEFAULT_DEVICES
+# Google Drive folder ID where screenshots will be uploaded.
+# Set GDRIVE_SCREENSHOTS_FOLDER_ID in your .env; leave empty to upload to Drive root.
+_GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_SCREENSHOTS_FOLDER_ID", "")
+
+# Set to True only when Drive credentials are properly configured.
+_DRIVE_ENABLED = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"))
+
+VIEWPORTS = [
+    {"name": "mobile",  "width": 375,  "height": 812,  "is_mobile": True,  "device_scale_factor": 2},
+    {"name": "tablet",  "width": 768,  "height": 1024, "is_mobile": True,  "device_scale_factor": 2},
+    {"name": "laptop",  "width": 1280, "height": 800,  "is_mobile": False, "device_scale_factor": 1},
+    {"name": "desktop", "width": 1440, "height": 900,  "is_mobile": False, "device_scale_factor": 1},
+]
 
 PAGE_TIMEOUT    = 30_000
 WAIT_AFTER_LOAD = 2_000
@@ -193,9 +207,37 @@ def run_playwright_scan(url: str, selected_devices: list = None) -> dict:
             try:
                 page.goto(url, wait_until="networkidle", timeout=PAGE_TIMEOUT)
                 page.wait_for_timeout(WAIT_AFTER_LOAD)
-                png_bytes = page.screenshot(full_page=True, type="png")
-                screenshots[key] = base64.b64encode(png_bytes).decode("utf-8")
-                
+
+                # Capture screenshot — upload to Drive if configured, else store as base64
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    tmp_path = tmp.name
+                try:
+                    page.screenshot(path=tmp_path, full_page=True, type="png")
+                    if _DRIVE_ENABLED:
+                        try:
+                            from .gdrive import upload_screenshot
+                            drive_url = upload_screenshot(
+                                file_path=tmp_path,
+                                device_name=device,
+                                folder_id=_GDRIVE_FOLDER_ID or None,
+                            )
+                            screenshots[device] = drive_url
+                            logger.info("Screenshot for %s uploaded to Drive: %s", device, drive_url)
+                        except Exception as drive_exc:
+                            logger.warning("Drive upload failed for %s, falling back to base64: %s", device, drive_exc)
+                            with open(tmp_path, "rb") as f:
+                                screenshots[device] = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+                    else:
+                        with open(tmp_path, "rb") as f:
+                            screenshots[device] = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+                except Exception as upload_exc:
+                    logger.error("Screenshot capture failed for %s: %s", device, upload_exc)
+                    screenshots[device] = None
+                finally:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
                 overflow     = page.evaluate(_JS_OVERFLOW)       or []
                 img_overflow = page.evaluate(_JS_IMAGE_OVERFLOW) or []
                 touch        = page.evaluate(_JS_TOUCH_TARGETS)  or []

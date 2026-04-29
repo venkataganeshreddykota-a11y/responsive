@@ -3,8 +3,10 @@ import AppRoutes from "./routes";
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    <div className="flex h-full min-h-screen w-full flex-col">
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </div>
   );
 }
