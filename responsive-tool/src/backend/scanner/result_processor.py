@@ -120,16 +120,21 @@ def resolution_advice(device_results: list, suggestions: list) -> list:
     advice = []
     statuses = device_status(device_results)
     for ds in statuses:
-        if ds["status"] in ("broken", "needs_fix"):
-            bp = _BREAKPOINT_ADVICE.get(ds["device"], {})
-            advice.append({
-                "priority":    "high" if ds["status"] == "broken" else "medium",
-                "device":      ds["device"],
-                "viewport":    bp.get("viewport", f"{ds['width']}px"),
-                "css_hint":    bp.get("css", ""),
-                "tip":         bp.get("tip", ""),
-                "issue_count": ds["issue_count"],
-            })
+        bp = _BREAKPOINT_ADVICE.get(ds["device"], {})
+        if ds["status"] == "broken":
+            priority = "high"
+        elif ds["status"] == "needs_fix":
+            priority = "medium"
+        else:
+            priority = "low"
+        advice.append({
+            "priority":    priority,
+            "device":      ds["device"],
+            "viewport":    bp.get("viewport", f"{ds['width']}px"),
+            "css_hint":    bp.get("css", ""),
+            "tip":         bp.get("tip", ""),
+            "issue_count": ds["issue_count"],
+        })
     seen_titles = {a.get("viewport", "") for a in advice}
     for s in suggestions:
         if s.get("title") not in seen_titles:

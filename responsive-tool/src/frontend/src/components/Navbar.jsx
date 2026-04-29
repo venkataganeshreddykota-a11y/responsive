@@ -10,8 +10,8 @@ export default function Navbar() {
   const { pathname } = useLocation();
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-surface-border glass">
-      <div className="mx-auto flex max-w-5xl items-center gap-5 px-4 sm:px-6" style={{ height: 52 }}>
+    <nav className="sticky top-0 z-50 border-b border-surface-border glass w-full">
+      <div className="flex w-full items-center gap-5 px-6" style={{ height: 52 }}>
 
         <Link to="/dashboard" className="flex items-center gap-2 no-underline">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-500 text-white shadow-orange-glow">

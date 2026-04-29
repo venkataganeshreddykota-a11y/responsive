@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { FiSmartphone, FiTablet, FiMonitor, FiMaximize2, FiX, FiLock } from "react-icons/fi";
 import { MdLaptop } from "react-icons/md";
 import { HiOutlineCamera } from "react-icons/hi2";
 
-// Each device: frameW = visual column width, screenH = screenshot area height
 const DEVICES = [
   { key: "mobile",  label: "Mobile",  width: 375,  Icon: FiSmartphone, frameW: 260,  screenH: 500, isPhone: true  },
   { key: "tablet",  label: "Tablet",  width: 768,  Icon: FiTablet,     frameW: 420,  screenH: 540, isPhone: false },
@@ -23,21 +23,15 @@ const FRAME_BORDER = {
   broken:    "border-red-300",
 };
 
-// Generic Android phone shell — rounded rect, camera dot, no notch
 function PhoneShell({ src, isLoading, onExpand, frameW, screenH }) {
-  const shellW = frameW;
-  const shellH = screenH + 44; // top bar + screen
-
   return (
     <div
       className="relative overflow-hidden rounded-[24px] border-[3px] border-stone-300 bg-white shadow-lg"
-      style={{ width: shellW, height: shellH }}
+      style={{ width: frameW, height: screenH + 44 }}
     >
-      {/* Top bar — camera dot only */}
       <div className="flex items-center justify-center bg-stone-100" style={{ height: 22 }}>
         <span className="h-2 w-2 rounded-full bg-stone-400" />
       </div>
-      {/* Screen */}
       <div className="relative overflow-hidden bg-stone-100" style={{ height: screenH }}>
         {isLoading ? (
           <div className="shimmer h-full w-full" />
@@ -58,7 +52,6 @@ function PhoneShell({ src, isLoading, onExpand, frameW, screenH }) {
           </div>
         )}
       </div>
-      {/* Bottom bar — thin indicator */}
       <div className="flex items-center justify-center bg-stone-100" style={{ height: 22 }}>
         <span className="h-1 w-10 rounded-full bg-stone-300" />
       </div>
@@ -66,7 +59,6 @@ function PhoneShell({ src, isLoading, onExpand, frameW, screenH }) {
   );
 }
 
-// Browser chrome frame for tablet / laptop / desktop
 function BrowserShell({ src, isLoading, onExpand, label, width, status, frameW, screenH }) {
   const borderClass = status ? FRAME_BORDER[status] : "border-stone-200";
   return (
@@ -74,7 +66,6 @@ function BrowserShell({ src, isLoading, onExpand, label, width, status, frameW, 
       className={`overflow-hidden rounded-xl border-2 bg-white shadow-glass transition-colors ${borderClass}`}
       style={{ width: frameW }}
     >
-      {/* Browser bar */}
       <div className="flex items-center gap-1.5 border-b border-stone-100 bg-stone-50 px-2.5 py-1.5">
         <span className="h-2 w-2 rounded-full bg-red-400/80" />
         <span className="h-2 w-2 rounded-full bg-amber-400/80" />
@@ -84,7 +75,6 @@ function BrowserShell({ src, isLoading, onExpand, label, width, status, frameW, 
           <span className="truncate text-[10px]">example.com</span>
         </div>
       </div>
-      {/* Screenshot */}
       <div className="relative bg-stone-50" style={{ height: screenH }}>
         {isLoading ? (
           <div className="shimmer h-full w-full" />
@@ -109,108 +99,168 @@ function BrowserShell({ src, isLoading, onExpand, label, width, status, frameW, 
   );
 }
 
-export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading }) {
-  const [lightbox, setLightbox] = useState(null); // key of device to show in lightbox
+// ── Lightbox rendered via portal into document.body ──────────────────────────
+function Lightbox({ device, src, onClose }) {
+  const d = device;
 
+  // lock body scroll while open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  // close on Escape
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const content = d.isPhone ? (
+    /* Phone: narrow shell, scrollable inside */
+    <div className="flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
+      {/* header */}
+      <div className="flex w-full max-w-sm items-center justify-between">
+        <span className="flex items-center gap-2 text-sm font-semibold text-white">
+          <FiSmartphone size={14} /> {d.label} — {d.width}px
+        </span>
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-sm text-white hover:bg-white/30 transition-colors"
+        >
+          <FiX size={13} /> Close
+        </button>
+      </div>
+
+      {/* phone shell — fixed 390px wide, scrollable screen */}
+      <div
+        className="flex flex-col overflow-hidden rounded-[40px] border-[5px] border-stone-300 bg-white shadow-2xl"
+        style={{ width: 390 }}
+      >
+        {/* top notch bar */}
+        <div className="flex shrink-0 items-center justify-center bg-stone-100" style={{ height: 32 }}>
+          <span className="h-2.5 w-2.5 rounded-full bg-stone-400" />
+        </div>
+        {/* scrollable screen area — max 70vh */}
+        <div
+          className="overflow-y-auto scrollbar-thin bg-white"
+          style={{ maxHeight: "calc(100vh - 180px)" }}
+        >
+          <img src={src} alt="Mobile full screenshot" style={{ width: "100%", display: "block" }} />
+        </div>
+        {/* bottom bar */}
+        <div className="flex shrink-0 items-center justify-center bg-stone-100" style={{ height: 32 }}>
+          <span className="h-1.5 w-14 rounded-full bg-stone-300" />
+        </div>
+      </div>
+    </div>
+  ) : (
+    /* Desktop / tablet / laptop: wide panel */
+    <div
+      className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-surface-border bg-white shadow-2xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex shrink-0 items-center justify-between border-b border-surface-border px-5 py-3">
+        <span className="flex items-center gap-2 text-sm font-semibold text-surface-body">
+          <d.Icon size={15} /> {d.label} — {d.width}px
+        </span>
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-stone-50 px-3 py-1 text-sm text-surface-label hover:text-surface-body transition-colors"
+        >
+          <FiX size={13} /> Close
+        </button>
+      </div>
+      <div className="overflow-y-auto scrollbar-thin">
+        <img src={src} alt={`${d.label} full screenshot`} className="w-full" />
+      </div>
+    </div>
+  );
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backgroundColor: "rgba(0,0,0,0.75)",
+        padding: "24px",
+      }}
+      onClick={onClose}
+    >
+      {content}
+    </div>,
+    document.body
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading }) {
+  const [lightbox, setLightbox] = useState(null);
   const statusMap = Object.fromEntries((deviceStatus || []).map((d) => [d.device, d]));
+  const lightboxDevice = lightbox ? DEVICES.find((x) => x.key === lightbox) : null;
 
   return (
-    <div className="glass rounded-2xl border border-surface-border shadow-glass">
+    <>
+      <div className="glass rounded-2xl border border-surface-border shadow-glass">
+        <div className="overflow-x-auto scrollbar-thin p-5 pb-4">
+          <div className="flex gap-6 items-end" style={{ minWidth: "max-content" }}>
+            {DEVICES.map(({ key, label, width, Icon, frameW, screenH, isPhone }) => {
+              const src = screenshots?.[key];
+              const ds  = statusMap[key];
+              const statusCfg = ds ? STATUS_STYLE[ds.status] : null;
 
-      {/* Side-by-side scrollable viewport row */}
-      <div className="overflow-x-auto scrollbar-thin p-5 pb-4">
-        <div className="flex gap-6 items-end" style={{ minWidth: "max-content" }}>
-          {DEVICES.map(({ key, label, width, Icon, frameW, screenH, isPhone }) => {
-            const src = screenshots?.[key];
-            const ds  = statusMap[key];
-            const statusCfg = ds ? STATUS_STYLE[ds.status] : null;
+              return (
+                <div key={key} className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-1.5 self-start">
+                    <Icon size={12} className="text-surface-muted" />
+                    <span className="text-xs font-semibold text-surface-body">{label}</span>
+                    <span className="text-xs text-stone-400">{width}px</span>
+                    {ds && <span className={`h-1.5 w-1.5 rounded-full ${statusCfg?.dot}`} />}
+                  </div>
 
-            return (
-              <div key={key} className="flex flex-col items-center gap-2">
-                {/* Label above frame */}
-                <div className="flex items-center gap-1.5 self-start">
-                  <Icon size={12} className="text-surface-muted" />
-                  <span className="text-xs font-semibold text-surface-body">{label}</span>
-                  <span className="text-xs text-stone-400">{width}px</span>
-                  {ds && (
-                    <span className={`h-1.5 w-1.5 rounded-full ${statusCfg?.dot}`} />
+                  {isPhone ? (
+                    <PhoneShell
+                      src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
+                      onExpand={() => src && !isLoading && setLightbox(key)}
+                    />
+                  ) : (
+                    <BrowserShell
+                      src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
+                      label={label} width={width} status={ds?.status}
+                      onExpand={() => src && !isLoading && setLightbox(key)}
+                    />
+                  )}
+
+                  {ds && !isLoading && (
+                    <div className="flex flex-wrap items-center gap-1.5 self-start">
+                      {ds.issue_count > 0 && (
+                        <span className="text-xs text-surface-muted">
+                          {ds.issue_count} issue{ds.issue_count !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {ds.probes?.overflow_count > 0 && (
+                        <span className="text-xs text-stone-400">{ds.probes.overflow_count} overflow</span>
+                      )}
+                      {ds.probes?.small_targets > 0 && (
+                        <span className="text-xs text-stone-400">{ds.probes.small_targets} small targets</span>
+                      )}
+                    </div>
                   )}
                 </div>
-
-                {/* Device frame */}
-                {isPhone ? (
-                  <PhoneShell
-                    src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
-                    onExpand={() => src && !isLoading && setLightbox(key)}
-                  />
-                ) : (
-                  <BrowserShell
-                    src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
-                    label={label} width={width} status={ds?.status}
-                    onExpand={() => src && !isLoading && setLightbox(key)}
-                  />
-                )}
-
-                {/* Status footer below frame */}
-                {ds && !isLoading && (
-                  <div className="flex flex-wrap items-center gap-1.5 self-start">
-                    <span className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${statusCfg?.pill}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${statusCfg?.dot}`} />
-                      {statusCfg?.label}
-                    </span>
-                    {ds.issue_count > 0 && (
-                      <span className="text-xs text-surface-muted">
-                        {ds.issue_count} issue{ds.issue_count !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {ds.probes?.overflow_count > 0 && (
-                      <span className="text-xs text-stone-400">{ds.probes.overflow_count} overflow</span>
-                    )}
-                    {ds.probes?.small_targets > 0 && (
-                      <span className="text-xs text-stone-400">{ds.probes.small_targets} small targets</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Lightbox */}
-      {lightbox && screenshots?.[lightbox] && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 animate-fade-in"
-          onClick={() => setLightbox(null)}
-          role="dialog" aria-modal="true"
-        >
-          <div
-            className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-surface-border bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const d = DEVICES.find((x) => x.key === lightbox);
-              return (
-                <>
-                  <div className="flex items-center justify-between border-b border-surface-border px-5 py-3">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-surface-body">
-                      {d && <d.Icon size={15} />}
-                      {d?.label} — {d?.width}px
-                    </span>
-                    <button onClick={() => setLightbox(null)}
-                      className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-stone-50 px-3 py-1 text-sm text-surface-label hover:text-surface-body transition-colors">
-                      <FiX size={13} /> Close
-                    </button>
-                  </div>
-                  <div className="overflow-y-auto scrollbar-thin">
-                    <img src={screenshots[lightbox]} alt={`${d?.label} full screenshot`} className="w-full" />
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
+      {/* Portal lightbox — always renders at document.body level */}
+      {lightbox && screenshots?.[lightbox] && lightboxDevice && (
+        <Lightbox
+          device={lightboxDevice}
+          src={screenshots[lightbox]}
+          onClose={() => setLightbox(null)}
+        />
       )}
-    </div>
+    </>
   );
 }
