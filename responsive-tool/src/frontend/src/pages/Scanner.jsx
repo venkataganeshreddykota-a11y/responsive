@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
-import StatusBanner from "../components/StatusBanner";
+
 import ScreenshotViewer from "../components/ScreenshotViewer";
 import ResolutionAdvisor from "../components/ResolutionAdvisor";
 import IssuePanel from "../components/IssuePanel";
+import DeviceSelector from "../components/DeviceSelector";
 
 const POLL_INTERVAL = 2500;
 const POLL_MAX      = 48;
@@ -24,6 +25,7 @@ export default function Scanner() {
   const [stepIdx, setStepIdx]     = useState(0);
   const [result, setResult]       = useState(null);
   const [error, setError]         = useState("");
+  const [selectedDevices, setSelectedDevices] = useState(["iphone_12_pro", "ipad_mini", "macbook_air"]);
   const pollRef   = useRef(null);
   const stepTimer = useRef(null);
 
@@ -62,7 +64,10 @@ export default function Scanner() {
     const trimmed = url.trim();
     setLoading(true); setActiveUrl(trimmed); startStepTimer();
     try {
-      const { data } = await api.post("/scanner/scan/", { url: trimmed });
+      const { data } = await api.post("/scanner/scan/", { 
+        url: trimmed,
+        devices: selectedDevices 
+      });
       pollStatus(data.report_id);
     } catch (err) {
       stopAll(); setError(err.response?.data?.url?.[0] || "Failed to start scan."); setLoading(false);
@@ -90,6 +95,16 @@ export default function Scanner() {
               {loading ? <><span className="spinner-sm" /> {step.label}</> : "Check Responsiveness"}
             </button>
           </form>
+
+          {!loading && !result && (
+            <DeviceSelector 
+              selectedDevices={selectedDevices} 
+              onToggle={(id) => setSelectedDevices(prev => 
+                prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+              )} 
+            />
+          )}
+
           {error && <p className="error" role="alert">{error}</p>}
           {loading && (
             <div className="scan-progress" role="progressbar" aria-valuenow={step.pct} aria-valuemax={100}>
@@ -105,13 +120,6 @@ export default function Scanner() {
 
         {(loading || result) && (
           <div className="results-section">
-            {result ? (
-              <StatusBanner verdict={result.verdict} verdictLabel={result.verdict_label}
-                verdictDetail={result.verdict_detail} score={result.score}
-                deviceStatus={result.device_status} url={activeUrl} />
-            ) : (
-              <div className="panel-skeleton" style={{ height: 140 }} />
-            )}
             <div className="results-block">
               <h2 className="section-title">Screenshots by Device</h2>
               <ScreenshotViewer screenshots={result?.screenshots} deviceStatus={result?.device_status} isLoading={loading} />

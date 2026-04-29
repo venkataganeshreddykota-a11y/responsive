@@ -3,12 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-VIEWPORTS = [
-    {"name": "mobile",  "width": 375,  "height": 812,  "is_mobile": True,  "device_scale_factor": 2},
-    {"name": "tablet",  "width": 768,  "height": 1024, "is_mobile": True,  "device_scale_factor": 2},
-    {"name": "laptop",  "width": 1280, "height": 800,  "is_mobile": False, "device_scale_factor": 1},
-    {"name": "desktop", "width": 1440, "height": 900,  "is_mobile": False, "device_scale_factor": 1},
-]
+from .devices import DEVICE_LIBRARY, DEFAULT_DEVICES
 
 PAGE_TIMEOUT    = 30_000
 WAIT_AFTER_LOAD = 2_000
@@ -160,26 +155,38 @@ def _build_issues(device: str, overflow, img_overflow, touch, invisible, overlap
     return issues
 
 
-def run_playwright_scan(url: str) -> dict:
+def run_playwright_scan(url: str, selected_devices: list = None) -> dict:
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
     screenshots: dict = {}
     device_results: list = []
     all_issues: list = []
 
+    # Filter devices from library
+    target_keys = selected_devices if selected_devices else DEFAULT_DEVICES
+    viewports = []
+    for key in target_keys:
+        if key in DEVICE_LIBRARY:
+            viewports.append({**DEVICE_LIBRARY[key], "key": key})
+    
+    if not viewports:
+        for key in DEFAULT_DEVICES:
+            viewports.append({**DEVICE_LIBRARY[key], "key": key})
+
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        for vp in VIEWPORTS:
-            device = vp["name"]
-            logger.info("Playwright scanning %s @ %dpx", device, vp["width"])
+        for vp in viewports:
+            key = vp["key"]
+            name = vp["name"]
+            logger.info("Playwright scanning %s @ %dpx", name, vp["width"])
             context = browser.new_context(
                 viewport={"width": vp["width"], "height": vp["height"]},
                 is_mobile=vp["is_mobile"],
                 device_scale_factor=vp["device_scale_factor"],
                 user_agent=(
-                    "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36"
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
                     if vp["is_mobile"] else
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
                 ),
             )
             page = context.new_page()
@@ -187,28 +194,42 @@ def run_playwright_scan(url: str) -> dict:
                 page.goto(url, wait_until="networkidle", timeout=PAGE_TIMEOUT)
                 page.wait_for_timeout(WAIT_AFTER_LOAD)
                 png_bytes = page.screenshot(full_page=True, type="png")
-                screenshots[device] = base64.b64encode(png_bytes).decode("utf-8")
+                screenshots[key] = base64.b64encode(png_bytes).decode("utf-8")
+                
                 overflow     = page.evaluate(_JS_OVERFLOW)       or []
                 img_overflow = page.evaluate(_JS_IMAGE_OVERFLOW) or []
                 touch        = page.evaluate(_JS_TOUCH_TARGETS)  or []
                 invisible    = page.evaluate(_JS_INVISIBLE_BLOCKS) or []
                 overlapping  = page.evaluate(_JS_OVERLAPPING)    or []
-                issues = _build_issues(device, overflow, img_overflow, touch, invisible, overlapping)
+                
+                issues = _build_issues(name, overflow, img_overflow, touch, invisible, overlapping)
                 all_issues.extend(issues)
+                
                 device_results.append({
-                    "device": device, "width": vp["width"], "height": vp["height"], "issues": issues,
+                    "device": key,
+                    "device_name": name,
+                    "width": vp["width"],
+                    "height": vp["height"],
+                    "icon": vp.get("icon", "📱"),
+                    "category": vp.get("category", "Mobile"),
+                    "issues": issues,
                     "probes": {"overflow_count": len(overflow), "img_overflow_count": len(img_overflow),
                                "small_targets": len(touch), "invisible_blocks": len(invisible), "overlapping_pairs": len(overlapping)},
                 })
             except PWTimeout:
-                logger.warning("Playwright timeout on %s @ %s", device, url)
-                device_results.append({"device": device, "width": vp["width"], "height": vp["height"],
-                    "issues": [{"severity": "info", "title": f"Page load timeout at {device}",
+                logger.warning("Playwright timeout on %s @ %s", name, url)
+                device_results.append({
+                    "device": key, "device_name": name, "width": vp["width"], "height": vp["height"],
+                    "icon": vp.get("icon", "📱"), "category": vp.get("category", "Mobile"),
+                    "issues": [{"severity": "info", "title": f"Page load timeout at {name}",
                                 "description": "The page took too long to load at this viewport.",
-                                "device": device.capitalize(), "source": "playwright"}], "probes": {}})
+                                "device": name, "source": "playwright"}], "probes": {}})
             except Exception as exc:
-                logger.error("Playwright error on %s: %s", device, exc)
-                device_results.append({"device": device, "width": vp["width"], "height": vp["height"], "issues": [], "probes": {}})
+                logger.error("Playwright error on %s: %s", name, exc)
+                device_results.append({
+                    "device": key, "device_name": name, "width": vp["width"], "height": vp["height"],
+                    "icon": vp.get("icon", "📱"), "category": vp.get("category", "Mobile"),
+                    "issues": [], "probes": {}})
             finally:
                 context.close()
         browser.close()

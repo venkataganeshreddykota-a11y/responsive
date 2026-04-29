@@ -35,7 +35,7 @@ def _dedupe_suggestions(suggestions: list) -> list:
     return out
 
 
-def _run(report_id: int, url: str):
+def _run(report_id: int, url: str, devices: list = None):
     from .models import ScanReport
     from .analyzer import analyze
     from .playwright_engine import run_playwright_scan
@@ -47,8 +47,8 @@ def _run(report_id: int, url: str):
         logger.info("[%s] Starting static analysis for %s", report_id, url)
         static = analyze(url)
 
-        logger.info("[%s] Starting Playwright scan for %s", report_id, url)
-        pw_result = run_playwright_scan(url)
+        logger.info("[%s] Starting Playwright scan for %s with devices: %s", report_id, url, devices)
+        pw_result = run_playwright_scan(url, devices)
 
         merged_issues      = _dedupe_issues(static["issues"] + pw_result["issues"])
         merged_suggestions = _dedupe_suggestions(static["suggestions"] + pw_result["suggestions"])
@@ -70,7 +70,7 @@ def _run(report_id: int, url: str):
             suggestions=merged_suggestions,
             screenshots=pw_result["screenshots"],
             device_results=pw_result["device_results"],
-            raw_result={**raw, "processed": processed},
+            raw_result={**raw, "processed": processed, "requested_devices": devices},
         )
         logger.info("[%s] Scan completed — verdict=%s score=%.1f issues=%d",
                     report_id, processed["verdict"], score, len(merged_issues))
@@ -88,7 +88,7 @@ def _run(report_id: int, url: str):
             pass
 
 
-def dispatch(report_id: int, url: str):
-    t = threading.Thread(target=_run, args=(report_id, url), daemon=True)
+def dispatch(report_id: int, url: str, devices: list = None):
+    t = threading.Thread(target=_run, args=(report_id, url, devices), daemon=True)
     t.start()
-    logger.info("Dispatched scan thread for report %s → %s", report_id, url)
+    logger.info("Dispatched scan thread for report %s → %s (devices: %s)", report_id, url, devices)

@@ -34,9 +34,10 @@ def trigger_scan(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     url = serializer.validated_data["url"]
+    devices = serializer.validated_data.get("devices")
     scan_url, _ = ScanURL.objects.get_or_create(url=url, defaults={"user": None})
     report = ScanReport.objects.create(scan_url=scan_url, status="pending")
-    tasks.dispatch(report.pk, url)
+    tasks.dispatch(report.pk, url, devices)
 
     return Response(
         {
@@ -44,6 +45,7 @@ def trigger_scan(request):
             "scan_url_id": scan_url.pk,
             "status": report.status,
             "message": "Scan started. Poll /api/scanner/scan/<report_id>/status/ for results.",
+            "devices": devices
         },
         status=status.HTTP_202_ACCEPTED,
     )

@@ -67,3 +67,4 @@ class ScanURLSerializer(serializers.ModelSerializer):
 
 class ScanTriggerSerializer(serializers.Serializer):
     url = serializers.URLField(max_length=2048)
+    devices = serializers.ListField(child=serializers.CharField(), required=False)

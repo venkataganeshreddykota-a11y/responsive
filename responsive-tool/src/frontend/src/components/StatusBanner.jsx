@@ -4,7 +4,7 @@ const CONFIG = {
   broken:   { icon: "❌", label: "Broken",    className: "status-banner status-banner--broken" },
 };
 
-const DEVICE_ICON = { mobile: "📱", tablet: "📟", laptop: "💻", desktop: "🖥️" };
+
 
 export default function StatusBanner({ verdict, verdictLabel, verdictDetail, score, deviceStatus, url }) {
   const cfg = CONFIG[verdict] || CONFIG["needs_fix"];
@@ -14,8 +14,6 @@ export default function StatusBanner({ verdict, verdictLabel, verdictDetail, sco
         <span className="status-icon">{cfg.icon}</span>
         <div>
           <div className="status-label">{verdictLabel || cfg.label}</div>
-          <div className="status-detail">{verdictDetail}</div>
-          {url && <a href={url} target="_blank" rel="noreferrer" className="status-url">{url}</a>}
         </div>
       </div>
       <div className="status-score-wrap">
@@ -31,19 +29,6 @@ export default function StatusBanner({ verdict, verdictLabel, verdictDetail, sco
         </svg>
         <span className="score-caption">Responsiveness Score</span>
       </div>
-      {deviceStatus && deviceStatus.length > 0 && (
-        <div className="status-devices">
-          {deviceStatus.map((ds) => (
-            <div key={ds.device} className={`device-pill device-pill--${ds.status}`}>
-              <span>{DEVICE_ICON[ds.device]}</span>
-              <span className="device-pill-name">{ds.device}</span>
-              <span className="device-pill-status">
-                {ds.status === "good" ? "✓" : ds.status === "needs_fix" ? "!" : "✗"}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
