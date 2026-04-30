@@ -7,8 +7,6 @@ const PRIORITY = {
   low:    { dot: "bg-stone-400", style: "border-l-stone-300 bg-white",         badge: "bg-stone-50 text-stone-600 border-stone-200" },
 };
 
-const DEVICE_LABEL = { mobile: "Mobile", tablet: "Tablet", laptop: "Laptop", desktop: "Desktop" };
-
 const CATEGORY_ICON = {
   viewport:    <MdOutlineDesktopWindows size={14} />,
   images:      <FiImage size={14} />,
@@ -67,7 +65,7 @@ export default function ResolutionAdvisor({ advice }) {
                   <div className="mb-1.5 flex flex-wrap items-center gap-2">
                     <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
                     <span className="text-xs font-semibold text-surface-body">
-                      {DEVICE_LABEL[item.device]} — {item.viewport}
+                      {item.device ? item.device.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Global'} — {item.viewport}
                     </span>
                     <span className={`ml-auto rounded-full border px-2 py-0.5 text-xs font-medium ${cfg.badge}`}>
                       {item.priority === "high" ? "High" : item.priority === "medium" ? "Medium" : "Low"} Priority

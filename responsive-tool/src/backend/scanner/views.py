@@ -6,7 +6,7 @@ from django.db.models import Prefetch
 
 from .models import ScanURL, ScanReport
 from .serializers import ScanURLSerializer, ScanReportSerializer, ScanTriggerSerializer
-from . import tasks
+from . import tasks, drive_service
 
 logger = logging.getLogger(__name__)
 
@@ -64,3 +64,31 @@ def scan_status(request, report_id):
         return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
     return Response(ScanReportSerializer(report).data)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def save_to_drive(request, report_id):
+    device_key = request.data.get("device")
+    if not device_key:
+        return Response({"error": "Device key required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        report = ScanReport.objects.get(pk=report_id)
+        if not report.screenshots or device_key not in report.screenshots:
+            return Response({"error": "Screenshot not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        b64_data = report.screenshots[device_key]
+        filename = f"screenshot_{report_id}_{device_key}.png"
+        
+        result = drive_service.upload_screenshot(filename, b64_data)
+        
+        if "error" in result:
+            return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        return Response(result, status=status.HTTP_200_OK)
+
+    except ScanReport.DoesNotExist:
+        return Response({"detail": "Report not found."}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

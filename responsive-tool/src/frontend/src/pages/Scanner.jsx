@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
 import { TbWorld } from "react-icons/tb";
 import { FiSmartphone, FiTablet, FiMonitor, FiClock, FiX } from "react-icons/fi";
 import { MdLaptop } from "react-icons/md";
@@ -7,10 +7,12 @@ import Navbar from "../components/Navbar";
 
 import ScreenshotViewer from "../components/ScreenshotViewer";
 import DeviceReport from "../components/DeviceReport";
+import StatusBanner from "../components/StatusBanner";
+import DeviceSelector from "../components/DeviceSelector";
 
 
 const POLL_INTERVAL  = 2500;
-const POLL_MAX       = 48;
+const POLL_MAX       = 120; // 5 minutes
 const HISTORY_KEY    = "rt_url_history";
 const HISTORY_LIMIT  = 10;
 
@@ -43,7 +45,7 @@ function pushHistory(url, list) {
 }
 
 // ── UrlInput ─────────────────────────────────────────────────────────────────
-function UrlInput({ value, onChange, onSubmit, loading, stepLabel }) {
+const UrlInput = forwardRef(({ value, onChange, onSubmit, loading, stepLabel }, ref) => {
   const [history, setHistory]     = useState(loadHistory);
   const [open, setOpen]           = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
@@ -98,9 +100,9 @@ function UrlInput({ value, onChange, onSubmit, loading, stepLabel }) {
   };
 
   // expose pushHistory so parent can call after scan
-  UrlInput._push = useCallback((u) => {
-    setHistory((prev) => pushHistory(u, prev));
-  }, []);
+  useImperativeHandle(ref, () => ({
+    push: (u) => setHistory((prev) => pushHistory(u, prev))
+  }), []);
 
   const step = STEPS[stepLabel] || STEPS[0];
 
@@ -160,7 +162,7 @@ function UrlInput({ value, onChange, onSubmit, loading, stepLabel }) {
       )}
     </div>
   );
-}
+});
 
 // ── Scanner ───────────────────────────────────────────────────────────────────
 export default function Scanner() {
@@ -170,6 +172,7 @@ export default function Scanner() {
   const [stepIdx, setStepIdx]     = useState(0);
   const [result, setResult]       = useState(null);
   const [error, setError]         = useState("");
+  const [selectedDevices, setSelectedDevices] = useState(["iphone_14", "ipad_air", "macbook_pro_14", "generic_desktop"]);
   const pollRef    = useRef(null);
   const stepTimer  = useRef(null);
   const urlInputRef = useRef(null);
@@ -209,7 +212,7 @@ export default function Scanner() {
     const trimmed = url.trim();
     setLoading(true); setActiveUrl(trimmed); startStepTimer();
     // push to history
-    UrlInput._push?.(trimmed);
+    urlInputRef.current?.push(trimmed);
     try {
       const { data } = await api.post("/scanner/scan/", { 
         url: trimmed,
@@ -221,111 +224,165 @@ export default function Scanner() {
     }
   };
 
+  const toggleDevice = (id) => {
+    setSelectedDevices(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
   const step = STEPS[stepIdx];
 
   return (
     <div className="flex h-full min-h-screen w-full flex-col bg-surface-bg">
       <Navbar />
 
-      {/* Search bar row */}
-      <div className="border-b border-surface-border bg-white/60 px-6 py-4">
-        <form onSubmit={handleScan} className="flex w-full gap-2.5">
-          <UrlInput
-            ref={urlInputRef}
-            value={url}
-            onChange={setUrl}
-            stepLabel={stepIdx}
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-3 text-sm font-semibold text-white shadow-orange-glow transition hover:bg-accent-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <>
-                <span className="h-3.5 w-3.5 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />
-                {step.label}…
-              </>
-            ) : "Analyse"}
-          </button>
-        </form>
+      {/* Hero / Action Bar */}
+      <div className="sticky top-0 z-40 border-b border-surface-border bg-white/70 px-6 py-5 backdrop-blur-xl transition-all">
+        <div className="mx-auto max-w-7xl">
+          <form onSubmit={handleScan} className="flex w-full items-center gap-3">
+            <UrlInput
+              ref={urlInputRef}
+              value={url}
+              onChange={setUrl}
+              stepLabel={stepIdx}
+            />
+            <DeviceSelector 
+              selectedDevices={selectedDevices} 
+              onToggle={toggleDevice} 
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-xl bg-accent-500 px-8 py-3.5 text-sm font-bold text-white shadow-orange-glow transition-all hover:bg-accent-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <div className="flex items-center gap-3">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <span className="animate-pulse">{step.label}…</span>
+                </div>
+              ) : (
+                <>
+                  <span>Analyse</span>
+                  <svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                </>
+              )}
+            </button>
+          </form>
 
-        {error && <p role="alert" className="mt-2 text-xs text-red-500">{error}</p>}
+          {error && <p role="alert" className="mt-2.5 animate-slide-up text-xs font-medium text-red-500">{error}</p>}
 
-        {loading && (
-          <div className="mt-3">
-            <div className="h-1 overflow-hidden rounded-full bg-stone-200">
-              <div className="h-full rounded-full bg-accent-500 transition-all duration-700"
-                style={{ width: `${step.pct}%` }} />
+          {loading && (
+            <div className="mt-5 animate-fade-in">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
+                <div className="h-full rounded-full bg-accent-500 shadow-[0_0_12px_rgba(249,115,22,0.5)] transition-all duration-1000 ease-in-out"
+                  style={{ width: `${step.pct}%` }} />
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <div className="flex gap-4">
+                  {STEPS.map((s, i) => (
+                    <div key={s.key} className="flex items-center gap-2">
+                      <div className={`h-1.5 w-1.5 rounded-full transition-all duration-300 ${i < stepIdx ? "bg-accent-500" : i === stepIdx ? "bg-accent-400 animate-pulse" : "bg-stone-300"}`} />
+                      <span className={`text-[11px] font-semibold tracking-wide transition-colors ${i <= stepIdx ? "text-accent-600" : "text-stone-400"}`}>
+                        {s.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <span className="text-[11px] font-bold text-accent-600">{step.pct}%</span>
+              </div>
             </div>
-            <div className="mt-1.5 flex justify-between">
-              {STEPS.map((s, i) => (
-                <span key={s.key} className={`text-xs transition-colors ${i <= stepIdx ? "text-accent-600 font-medium" : "text-stone-300"}`}>
-                  {s.label}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Main content area */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {!loading && !result ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4">
-            <div className="flex gap-5 opacity-20 text-surface-muted">
-              <FiSmartphone size={40} /><FiTablet size={40} /><MdLaptop size={40} /><FiMonitor size={40} />
-            </div>
-            <p className="text-sm text-surface-muted">Enter a URL above to get a full responsiveness report.</p>
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col overflow-y-auto scrollbar-thin">
-            <div className="px-6 pt-5">
-              {result ? (
-                <StatusBanner
-                  verdict={result.verdict}
-                  verdictLabel={result.verdict_label}
-                  verdictDetail={result.verdict_detail}
-                  score={result.score}
-                  deviceStatus={result.device_status}
-                  url={activeUrl}
-                />
-              ) : <SkeletonPanel h="h-28" />}
-            </div>
-
-            <div className="px-6 pt-5">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-surface-muted">
-                Screenshots by Device
-              </p>
-              <ScreenshotViewer
-                screenshots={result?.screenshots}
-                deviceStatus={result?.device_status}
-                isLoading={loading}
-              />
-            </div>
-
-            <div className="px-6 py-5">
-              {result && (
-                <>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-surface-muted">
-                    Issues &amp; Fixes by Device
-                  </p>
-                  <DeviceReport
-                    issues={result.issues}
-                    issueGroups={result.issue_groups}
-                    advice={result.resolution_advice}
-                    deviceStatus={result.device_status}
-                  />
-                </>
-              )}
-              {loading && (
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  {[1,2,3,4].map(n => <SkeletonPanel key={n} h="h-64" />)}
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col overflow-hidden">
+          {!loading && !result ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 text-center animate-fade-in">
+              <div className="relative">
+                <div className="absolute -inset-4 rounded-full bg-accent-100/50 blur-2xl" />
+                <div className="relative flex gap-6 text-surface-muted">
+                  <FiSmartphone size={48} className="animate-bounce" style={{ animationDelay: '0s', animationDuration: '3s' }} />
+                  <FiTablet size={48} className="animate-bounce" style={{ animationDelay: '0.2s', animationDuration: '3.2s' }} />
+                  <MdLaptop size={48} className="animate-bounce" style={{ animationDelay: '0.4s', animationDuration: '3.4s' }} />
+                  <FiMonitor size={48} className="animate-bounce" style={{ animationDelay: '0.6s', animationDuration: '3.6s' }} />
                 </div>
-              )}
+              </div>
+              <div className="max-w-md">
+                <h2 className="mb-2 text-2xl font-bold tracking-tight text-surface-body">Ready to scan?</h2>
+                <p className="text-sm leading-relaxed text-surface-muted">
+                  Enter any website URL above and select the devices you want to test. We'll generate high-fidelity screenshots and analyze responsiveness issues in seconds.
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-1 flex-col overflow-y-auto scrollbar-thin">
+              <div className="px-6 py-8">
+                {result ? (
+                  <StatusBanner
+                    verdict={result.verdict}
+                    verdictLabel={result.verdict_label}
+                    verdictDetail={result.verdict_detail}
+                    score={result.score}
+                    deviceStatus={result.device_status}
+                    url={activeUrl}
+                  />
+                ) : <SkeletonPanel h="h-32" />}
+              </div>
+
+              <div className="px-6 py-2">
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-surface-body">Device Screenshots</h3>
+                    <p className="text-xs text-surface-muted">Visual validation across your selected breakpoints.</p>
+                  </div>
+                </div>
+                <ScreenshotViewer
+                  screenshots={result?.screenshots}
+                  deviceStatus={result?.device_status}
+                  isLoading={loading}
+                  onSaveToDrive={async (deviceKey) => {
+                    if (!result?.id) return;
+                    try {
+                      const { data } = await api.post(`/scanner/scan/${result.id}/drive/`, { device: deviceKey });
+                      if (data.success) {
+                        alert(`Successfully saved to Google Drive!`);
+                        if (data.link) window.open(data.link, '_blank');
+                      } else {
+                        alert(`Error: ${data.error || 'Failed to save'}`);
+                      }
+                    } catch (err) {
+                      alert(`Failed to save to Google Drive: ${err.response?.data?.error || err.message}`);
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="px-6 py-10">
+                {result && (
+                  <>
+                    <div className="mb-6">
+                      <h3 className="text-sm font-bold text-surface-body">Optimization Reports</h3>
+                      <p className="text-xs text-surface-muted">Automated issue detection and suggested CSS fixes.</p>
+                    </div>
+                    <DeviceReport
+                      issues={result.issues}
+                      issueGroups={result.issue_groups}
+                      advice={result.resolution_advice}
+                      deviceStatus={result.device_status}
+                    />
+                  </>
+                )}
+                {loading && (
+                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+                    {[1,2,3,4].map(n => <SkeletonPanel key={n} h="h-[400px]" />)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

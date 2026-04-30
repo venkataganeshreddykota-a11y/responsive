@@ -4,12 +4,13 @@ import { FiSmartphone, FiTablet, FiMonitor, FiMaximize2, FiX, FiLock } from "rea
 import { MdLaptop } from "react-icons/md";
 import { HiOutlineCamera } from "react-icons/hi2";
 
-const DEVICES = [
-  { key: "mobile",  label: "Mobile",  width: 375,  Icon: FiSmartphone, frameW: 260,  screenH: 500, isPhone: true  },
-  { key: "tablet",  label: "Tablet",  width: 768,  Icon: FiTablet,     frameW: 420,  screenH: 540, isPhone: false },
-  { key: "laptop",  label: "Laptop",  width: 1280, Icon: MdLaptop,     frameW: 560,  screenH: 540, isPhone: false },
-  { key: "desktop", label: "Desktop", width: 1440, Icon: FiMonitor,    frameW: 620,  screenH: 540, isPhone: false },
-];
+const CATEGORY_UI = {
+  Mobile:  { Icon: FiSmartphone, frameW: 260, screenH: 500, isPhone: true  },
+  Tablet:  { Icon: FiTablet,     frameW: 420, screenH: 540, isPhone: false },
+  Desktop: { Icon: FiMonitor,    frameW: 620, screenH: 540, isPhone: false },
+};
+
+const DEFAULT_UI = { Icon: FiSmartphone, frameW: 300, screenH: 500, isPhone: false };
 
 const STATUS_STYLE = {
   good:      { dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Good"      },
@@ -162,7 +163,7 @@ function Lightbox({ device, src, onClose }) {
     >
       <div className="flex shrink-0 items-center justify-between border-b border-surface-border px-5 py-3">
         <span className="flex items-center gap-2 text-sm font-semibold text-surface-body">
-          <d.Icon size={15} /> {d.label} — {d.width}px
+          <d.Icon size={15} /> {d.label}
         </span>
         <button
           onClick={onClose}
@@ -194,20 +195,33 @@ function Lightbox({ device, src, onClose }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading }) {
+export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading, onSaveToDrive }) {
   const [lightbox, setLightbox] = useState(null);
-  const statusMap = Object.fromEntries((deviceStatus || []).map((d) => [d.device, d]));
-  const lightboxDevice = lightbox ? DEVICES.find((x) => x.key === lightbox) : null;
+  
+  // Prepare dynamic device list from deviceStatus
+  const devices = (deviceStatus || []).map(ds => {
+    const ui = CATEGORY_UI[ds.category] || DEFAULT_UI;
+    return {
+      key: ds.device,
+      label: ds.device_name || ds.device,
+      width: ds.width,
+      status: ds.status,
+      issue_count: ds.issue_count,
+      probes: ds.probes,
+      ...ui
+    };
+  });
+
+  const lightboxDevice = lightbox ? devices.find((x) => x.key === lightbox) : null;
 
   return (
     <>
       <div className="glass rounded-2xl border border-surface-border shadow-glass">
         <div className="overflow-x-auto scrollbar-thin p-5 pb-4">
           <div className="flex gap-6 items-end" style={{ minWidth: "max-content" }}>
-            {DEVICES.map(({ key, label, width, Icon, frameW, screenH, isPhone }) => {
+            {devices.map(({ key, label, width, Icon, frameW, screenH, isPhone, status, issue_count, probes }) => {
               const src = screenshots?.[key];
-              const ds  = statusMap[key];
-              const statusCfg = ds ? STATUS_STYLE[ds.status] : null;
+              const statusCfg = status ? STATUS_STYLE[status] : null;
 
               return (
                 <div key={key} className="flex flex-col items-center gap-2">
@@ -215,7 +229,7 @@ export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading 
                     <Icon size={12} className="text-surface-muted" />
                     <span className="text-xs font-semibold text-surface-body">{label}</span>
                     <span className="text-xs text-stone-400">{width}px</span>
-                    {ds && <span className={`h-1.5 w-1.5 rounded-full ${statusCfg?.dot}`} />}
+                    {status && <span className={`h-1.5 w-1.5 rounded-full ${statusCfg?.dot}`} />}
                   </div>
 
                   {isPhone ? (
@@ -226,24 +240,35 @@ export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading 
                   ) : (
                     <BrowserShell
                       src={src} isLoading={isLoading} frameW={frameW} screenH={screenH}
-                      label={label} width={width} status={ds?.status}
+                      label={label} width={width} status={status}
                       onExpand={() => src && !isLoading && setLightbox(key)}
                     />
                   )}
 
-                  {ds && !isLoading && (
-                    <div className="flex flex-wrap items-center gap-1.5 self-start">
-                      {ds.issue_count > 0 && (
-                        <span className="text-xs text-surface-muted">
-                          {ds.issue_count} issue{ds.issue_count !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {ds.probes?.overflow_count > 0 && (
-                        <span className="text-xs text-stone-400">{ds.probes.overflow_count} overflow</span>
-                      )}
-                      {ds.probes?.small_targets > 0 && (
-                        <span className="text-xs text-stone-400">{ds.probes.small_targets} small targets</span>
-                      )}
+                  {status && !isLoading && (
+                    <div className="flex flex-col gap-1 self-start w-full">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {issue_count > 0 && (
+                          <span className="text-[10px] font-bold text-red-500 uppercase tracking-tight">
+                            {issue_count} issue{issue_count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {probes?.overflow_count > 0 && (
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 uppercase">
+                            ⚠️ Not Fit
+                          </span>
+                        )}
+                      </div>
+                      
+                      <button 
+                        onClick={() => src && onSaveToDrive?.(key)}
+                        className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-white py-1.5 text-[10px] font-semibold text-stone-600 transition-all hover:bg-stone-50 hover:text-stone-800"
+                      >
+                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M7.71 3.5L1.15 15l3.43 6 6.55-11.5M9.73 15L6.3 21h13.12l3.43-6M18.74 15L12.15 3.5h-6.85L11.88 15" />
+                        </svg>
+                        Save to Drive
+                      </button>
                     </div>
                   )}
                 </div>

@@ -75,7 +75,7 @@ export default function StatusBanner({ verdict, verdictLabel, verdictDetail, sco
               <span key={ds.device}
                 className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${DEVICE_PILL[ds.status] || DEVICE_PILL.needs_fix}`}>
                 {DEVICE_ICON[ds.device]}
-                <span className="capitalize">{ds.device}</span>
+                <span>{ds.device_name}</span>
                 <span className="font-bold">{ds.status === "good" ? "✓" : ds.status === "needs_fix" ? "!" : "✕"}</span>
               </span>
             ))}

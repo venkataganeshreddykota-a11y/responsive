@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { FiSmartphone, FiTablet, FiMonitor } from "react-icons/fi";
 
 const DEVICE_OPTIONS = [
   { id: "iphone_4", name: "iPhone 4", category: "Mobile", icon: "📱", width: 320, height: 480 },
@@ -57,56 +58,94 @@ export default function DeviceSelector({ selectedDevices, onToggle }) {
   const categories = ["Mobile", "Tablet", "Desktop"];
 
   return (
-    <div className="device-selector-dropdown">
+    <div className="relative">
       <button 
         type="button" 
-        className={`btn-selector-toggle ${isOpen ? 'active' : ''}`}
+        className={`flex items-center gap-2 rounded-xl border border-surface-border bg-white px-4 py-3 text-sm font-medium text-surface-body shadow-sm transition-all hover:bg-stone-50 active:scale-95 ${isOpen ? 'ring-2 ring-accent-400/20 border-accent-400' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <span className="icon">📱</span>
-        <span>Select Devices ({selectedDevices.length})</span>
-        <span className="chevron">{isOpen ? "▲" : "▼"}</span>
+        <span className="text-accent-500">
+          <FiSmartphone size={16} />
+        </span>
+        <span>Devices ({selectedDevices.length})</span>
+        <span className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+        </span>
       </button>
 
       {isOpen && (
-        <div className="selector-panel shadow-lg">
-          <div className="panel-header">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-[60] w-[420px] overflow-hidden rounded-2xl border border-surface-border bg-white shadow-glass-hover animate-fade-in">
+          <div className="sticky top-0 z-10 border-b border-surface-border bg-white/80 p-3 backdrop-blur-md">
             <input 
               type="text" 
               placeholder="Search devices..." 
-              className="search-input-small"
+              className="w-full rounded-lg border border-surface-border bg-stone-50 px-3 py-2 text-sm outline-none transition focus:border-accent-400 focus:ring-2 focus:ring-accent-400/10"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
             />
           </div>
-          <div className="panel-body">
+          
+          <div className="max-h-[380px] overflow-y-auto p-4 scrollbar-thin">
             {categories.map(cat => {
               const catOptions = filteredOptions.filter(o => o.category === cat);
               if (catOptions.length === 0) return null;
               return (
-                <div key={cat} className="panel-category">
-                  <h4 className="category-title">{cat}</h4>
-                  <div className="chips-grid">
-                    {catOptions.map(device => (
-                      <label key={device.id} className={`chip-option ${selectedDevices.includes(device.id) ? 'active' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={selectedDevices.includes(device.id)}
-                          onChange={() => onToggle(device.id)}
-                          className="hidden-checkbox"
-                        />
-                        <span className="chip-name">{device.name}</span>
-                        <span className="chip-res">{device.width}×{device.height}</span>
-                      </label>
-                    ))}
+                <div key={cat} className="mb-6 last:mb-0">
+                  <h4 className="mb-2.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-surface-muted">
+                    {cat === "Mobile" && <FiSmartphone size={12} />}
+                    {cat === "Tablet" && <FiTablet size={12} />}
+                    {cat === "Desktop" && <FiMonitor size={12} />}
+                    {cat}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {catOptions.map(device => {
+                      const isSelected = selectedDevices.includes(device.id);
+                      return (
+                        <label 
+                          key={device.id} 
+                          className={`group flex cursor-pointer items-center justify-between rounded-xl border p-2.5 transition-all ${
+                            isSelected 
+                              ? 'border-accent-400 bg-accent-50/50 ring-1 ring-accent-400' 
+                              : 'border-surface-border hover:border-stone-300 hover:bg-stone-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onToggle(device.id)}
+                            className="hidden"
+                          />
+                          <div className="flex flex-1 flex-col overflow-hidden">
+                            <span className={`truncate text-[13px] font-medium transition-colors ${isSelected ? 'text-accent-700' : 'text-surface-body'}`}>
+                              {device.name}
+                            </span>
+                            <span className="text-[10px] text-surface-muted">
+                              {device.width} × {device.height}
+                            </span>
+                          </div>
+                          {isSelected && (
+                            <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white">
+                              <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                            </div>
+                          )}
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="panel-footer">
-            <button className="btn-primary btn-sm" onClick={() => setIsOpen(false)}>Done</button>
+          
+          <div className="flex items-center justify-between border-t border-surface-border bg-stone-50/50 px-4 py-3">
+            <span className="text-[11px] text-surface-muted">{selectedDevices.length} devices selected</span>
+            <button 
+              className="rounded-lg bg-surface-body px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-black active:scale-95" 
+              onClick={() => setIsOpen(false)}
+            >
+              Done
+            </button>
           </div>
         </div>
       )}

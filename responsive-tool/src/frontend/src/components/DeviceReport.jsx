@@ -9,12 +9,13 @@ import { FiImage, FiType, FiZap, FiLayout, FiAlertCircle } from "react-icons/fi"
 import { MdOutlineDesktopWindows, MdOutlineAdsClick } from "react-icons/md";
 
 // ── config ────────────────────────────────────────────────────────────────────
-const DEVICES = [
-  { key: "mobile",  label: "Mobile",  width: "375px",  Icon: FiSmartphone },
-  { key: "tablet",  label: "Tablet",  width: "768px",  Icon: FiTablet     },
-  { key: "laptop",  label: "Laptop",  width: "1280px", Icon: MdLaptop     },
-  { key: "desktop", label: "Desktop", width: "1440px", Icon: FiMonitor    },
-];
+const CATEGORY_UI = {
+  Mobile:  { Icon: FiSmartphone, label: "Mobile" },
+  Tablet:  { Icon: FiTablet,     label: "Tablet" },
+  Desktop: { Icon: FiMonitor,    label: "Desktop" },
+};
+
+const DEFAULT_UI = { Icon: FiSmartphone, label: "Unknown" };
 
 const STATUS_CFG = {
   good:      { pill: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500", label: "Good",      header: "border-emerald-200 bg-emerald-50/40", text: "text-emerald-700" },
@@ -48,11 +49,12 @@ const SOURCE_LABEL = { playwright: "Live", static: "Static" };
 // ── helpers ───────────────────────────────────────────────────────────────────
 // issue.device is like "Mobile", "Mobile, Tablet", "Mobile, Tablet, Laptop"
 // deviceLabel is "Mobile" | "Tablet" | "Laptop" | "Desktop"
-function issueMatchesDevice(issue, deviceLabel) {
-  if (!issue.device) return false; // no device = global, handled separately
-  // split by comma and check if any segment matches
-  return issue.device.split(",").some(
-    (seg) => seg.trim().toLowerCase() === deviceLabel.toLowerCase()
+function issueMatchesDevice(issue, deviceName, category) {
+  if (!issue.device) return false;
+  const text = issue.device.toLowerCase();
+  return (
+    text.includes(deviceName.toLowerCase()) || 
+    text.includes(category.toLowerCase())
   );
 }
 
@@ -121,13 +123,13 @@ function GeneralFixItem({ item }) {
 // ── single device card ────────────────────────────────────────────────────────
 function DeviceCard({ device, deviceStatus, issues, advice }) {
   const [tab, setTab] = useState("issues");
-  const { key, label, width, Icon } = device;
+  const { key, label, width, Icon, category } = device;
 
   const ds = deviceStatus?.find((d) => d.device === key);
   const statusCfg = ds ? (STATUS_CFG[ds.status] || STATUS_CFG.needs_fix) : null;
 
-  // only issues that explicitly mention this device
-  const deviceIssues = (issues || []).filter((iss) => issueMatchesDevice(iss, label));
+  // only issues that explicitly mention this device or its category
+  const deviceIssues = (issues || []).filter((iss) => issueMatchesDevice(iss, label, category));
 
   // only breakpoint fixes for this device (items with device === key)
   const deviceFixes = (advice || []).filter((a) => adviceMatchesDevice(a, key));
@@ -235,11 +237,22 @@ export default function DeviceReport({ issues, issueGroups, advice, deviceStatus
   // general suggestions = advice items with no device field
   const generalSuggestions = (advice || []).filter((a) => !a.device);
 
+  const devices = (deviceStatus || []).map(ds => {
+    const ui = CATEGORY_UI[ds.category] || DEFAULT_UI;
+    return {
+      key: ds.device,
+      label: ds.device_name || ds.device,
+      width: `${ds.width}px`,
+      category: ds.category || "Mobile",
+      ...ui
+    };
+  });
+
   return (
     <div className="flex flex-col gap-4">
       {/* Per-device cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {DEVICES.map((device) => (
+        {devices.map((device) => (
           <DeviceCard
             key={device.key}
             device={device}

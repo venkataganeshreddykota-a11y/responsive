@@ -15,9 +15,10 @@ def compute_verdict(score: float, issues: list) -> dict:
             "The layout is likely unusable on one or more device sizes."
         )
     else:
+        warning_text = f" and {warning_count} warning" if warning_count > 0 else ""
         verdict, label = "needs_fix", "Needs Fix"
         detail = (
-            f"{critical_count} critical and {warning_count} warning issue(s) found. "
+            f"{critical_count} critical{warning_text} issue(s) found. "
             "Some viewports have layout problems that should be addressed."
         )
     return {"verdict": verdict, "label": label, "detail": detail}
@@ -100,6 +101,7 @@ def device_status(device_results: list) -> list:
             status = "good"
         out.append({
             "device":      dr["device"],
+            "device_name": dr.get("device_name", dr["device"]),
             "width":       dr["width"],
             "status":      status,
             "issue_count": len(issues),
