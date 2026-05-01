@@ -231,7 +231,7 @@ export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading,
       </div>
 
       {viewMode === "live" ? (
-        <LiveViewPanel url={activeUrl} />
+        <LiveViewPanel url={activeUrl} deviceStatus={deviceStatus} screenshots={screenshots} />
       ) : (
         <div className="glass rounded-2xl border border-surface-border shadow-glass">
           <div className="overflow-x-auto scrollbar-thin p-5 pb-4">

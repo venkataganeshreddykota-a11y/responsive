@@ -2,9 +2,6 @@ import { BrowserRouter } from "react-router-dom";
 import AppRoutes from "./routes";
 
 export default function App() {
-  // Debug: Log to confirm React is rendering
-  console.log("App component rendering");
-  
   return (
     <div className="flex h-full min-h-screen w-full flex-col">
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
