@@ -79,7 +79,8 @@ class ScanURLSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "reports", "latest_report")
 
     def get_latest_report(self, obj):
-        report = obj.reports.first()
+        reports = list(obj.reports.all())
+        report = reports[-1] if reports else None
         return ScanReportListSerializer(report).data if report else None
 
     def create(self, validated_data):

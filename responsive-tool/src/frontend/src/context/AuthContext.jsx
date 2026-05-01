@@ -9,10 +9,15 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
+    console.log("AuthContext: checking token", { hasToken: !!token });
     if (!token) { setLoading(false); return; }
     api.get("/users/me/")
-      .then(({ data }) => setUser(data))
-      .catch(() => {
+      .then(({ data }) => {
+        console.log("AuthContext: user loaded", data);
+        setUser(data);
+      })
+      .catch((err) => {
+        console.error("AuthContext: failed to load user", err);
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
       })

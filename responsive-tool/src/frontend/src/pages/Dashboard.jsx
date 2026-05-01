@@ -21,6 +21,25 @@ const DEVICE_ICONS = {
   desktop: FiMonitor,
 };
 
+const DASHBOARD_CACHE_KEY = "rt_dashboard_urls";
+
+function loadCachedDashboardUrls() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(DASHBOARD_CACHE_KEY) || "[]");
+    return Array.isArray(cached) ? cached : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedDashboardUrls(data) {
+  try {
+    localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(data));
+  } catch {
+    // Ignore storage quota or privacy-mode failures; live data still renders.
+  }
+}
+
 function StatCard({ label, value, sub, accent }) {
   return (
     <div className="glass rounded-2xl p-5 shadow-glass flex flex-col gap-1">
@@ -159,19 +178,29 @@ function LivePreviewSection({ defaultUrl }) {
 }
 
 export default function Dashboard() {
-  const [urls, setUrls]       = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [urls, setUrls]       = useState(loadCachedDashboardUrls);
+  const [loading, setLoading] = useState(() => loadCachedDashboardUrls().length === 0);
+  const [error, setError]     = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
+
+    if (urls.length === 0) setLoading(true);
+
     api.get("/scanner/urls/", { signal: controller.signal })
-      .then(({ data }) => setUrls(data))
+      .then(({ data }) => {
+        setUrls(data);
+        saveCachedDashboardUrls(data);
+        setError(null);
+      })
       .catch((err) => {
         if (err.name !== "CanceledError" && err.name !== "AbortError") {
-          // unauthenticated or network error — show empty state
+          setError(err.response?.status === 401 ? "auth" : "network");
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+      });
     return () => controller.abort();
   }, []);
 
@@ -214,6 +243,29 @@ export default function Dashboard() {
   return (
     <div className="flex h-full min-h-screen w-full flex-col bg-surface-bg">
       <Navbar />
+
+      {/* Error banner */}
+      {error === "auth" && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <HiOutlineXCircle className="text-red-500" size={18} />
+              <p className="text-sm text-red-700">
+                Authentication error. Your session may have expired.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                window.location.reload();
+              }}
+              className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600 transition-colors"
+            >
+              Clear & Reload
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}

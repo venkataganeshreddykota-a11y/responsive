@@ -9,6 +9,16 @@ const links = [
 export default function Navbar() {
   const { pathname } = useLocation();
 
+  // Add logout handler
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    window.location.href = "/dashboard";
+  };
+
+  // Check if user is logged in
+  const hasToken = !!localStorage.getItem("access_token");
+
   return (
     <nav className="sticky top-0 z-50 border-b border-surface-border glass w-full">
       <div className="flex w-full items-center gap-5 px-6" style={{ height: 52 }}>
@@ -42,7 +52,15 @@ export default function Navbar() {
           })}
         </div>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          {hasToken && (
+            <button
+              onClick={handleLogout}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-surface-label hover:bg-black/5 hover:text-surface-body transition-all"
+            >
+              Logout
+            </button>
+          )}
           <span className="rounded-full border border-accent-200 bg-accent-50 px-2.5 py-0.5 text-xs font-medium text-accent-600">
             Beta
           </span>

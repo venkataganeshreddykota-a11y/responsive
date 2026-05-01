@@ -41,15 +41,21 @@ module.exports = {
         xs: "2px",
       },
       animation: {
-        shimmer:    "shimmer 1.4s infinite linear",
-        "spin-slow": "spin 1s linear infinite",
-        "fade-in":  "fadeIn 0.2s ease-out",
-        "slide-up": "slideUp 0.25s ease-out",
+        shimmer:       "shimmer 1.4s infinite linear",
+        "shimmer-bar": "shimmerBar 1.6s infinite ease-in-out",
+        "spin-slow":   "spin 1s linear infinite",
+        "fade-in":     "fadeIn 0.2s ease-out",
+        "slide-up":    "slideUp 0.25s ease-out",
       },
       keyframes: {
         shimmer: {
           "0%":   { backgroundPosition: "-600px 0" },
           "100%": { backgroundPosition: "600px 0" },
+        },
+        shimmerBar: {
+          "0%":   { transform: "translateX(-100%)", opacity: 0 },
+          "40%":  { opacity: 1 },
+          "100%": { transform: "translateX(100%)", opacity: 0 },
         },
         fadeIn: {
           from: { opacity: 0 },

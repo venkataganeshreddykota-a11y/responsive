@@ -1,9 +1,34 @@
 import { useRef, useState } from "react";
 import { FiRefreshCw, FiAlertTriangle } from "react-icons/fi";
 
-// Point directly at the Django backend — bypasses the CRA dev-server proxy
-// which crashes on large streaming HTML responses in Node v24.
-const PROXY_BASE = "http://localhost:8000/api/scanner/proxy/?url=";
+const PROXY_BASE =
+  process.env.REACT_APP_PROXY_BASE || "/api/scanner/proxy/?url=";
+
+function getYouTubeEmbedUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.replace(/^www\./, "");
+    let videoId = "";
+
+    if (host === "youtu.be") {
+      videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+    } else if (host === "youtube.com" || host === "m.youtube.com") {
+      if (parsed.pathname === "/watch") {
+        videoId = parsed.searchParams.get("v") || "";
+      } else if (parsed.pathname.startsWith("/shorts/")) {
+        videoId = parsed.pathname.split("/").filter(Boolean)[1] || "";
+      } else if (parsed.pathname.startsWith("/embed/")) {
+        videoId = parsed.pathname.split("/").filter(Boolean)[1] || "";
+      }
+    }
+
+    return videoId
+      ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`
+      : "";
+  } catch {
+    return "";
+  }
+}
 
 /**
  * DeviceFrame
@@ -25,7 +50,8 @@ export default function DeviceFrame({ url, deviceName, width, height, scale }) {
   const [error, setError]     = useState(false);
   const iframeRef             = useRef(null);
 
-  const proxyUrl = `${PROXY_BASE}${encodeURIComponent(url)}`;
+  const embedUrl = getYouTubeEmbedUrl(url);
+  const frameUrl = embedUrl || `${PROXY_BASE}${encodeURIComponent(url)}`;
 
   // Outer wrapper dimensions — what the component occupies in the layout
   const wrapperWidth  = width  * scale;
@@ -35,7 +61,7 @@ export default function DeviceFrame({ url, deviceName, width, height, scale }) {
     setError(false);
     setLoading(true);
     if (iframeRef.current) {
-      iframeRef.current.src = proxyUrl;
+      iframeRef.current.src = frameUrl;
     }
   };
 
@@ -94,9 +120,11 @@ export default function DeviceFrame({ url, deviceName, width, height, scale }) {
         */}
         <iframe
           ref={iframeRef}
-          src={proxyUrl}
+          src={frameUrl}
           title={`Live preview – ${deviceName}`}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
           onLoad={() => {
             try {
               const doc = iframeRef.current?.contentDocument;

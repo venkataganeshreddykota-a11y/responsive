@@ -67,9 +67,19 @@ export default function LiveViewPanel({ url }) {
         />
       </div>
 
-      <p className="px-5 pb-3 text-center text-xs text-surface-muted">
-        Live preview is proxied — some sites may block or render differently.
-      </p>
+      <div className="px-5 pb-3 text-center">
+        <p className="text-xs text-surface-muted mb-2">
+          Live preview is proxied — some sites may block or render differently.
+        </p>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-accent-600 hover:text-accent-700 hover:underline"
+        >
+          Open original site in new tab →
+        </a>
+      </div>
     </div>
   );
 }

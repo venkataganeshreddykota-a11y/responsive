@@ -250,16 +250,43 @@ export default function Scanner() {
 
         {loading && (
           <div className="mt-3">
-            <div className="h-1 overflow-hidden rounded-full bg-stone-200">
-              <div className="h-full rounded-full bg-accent-500 transition-all duration-700"
-                style={{ width: `${step.pct}%` }} />
+            {/* progress bar */}
+            <div className="relative h-1.5 overflow-hidden rounded-full bg-stone-200">
+              <div
+                className="h-full rounded-full bg-accent-500 transition-all duration-700 ease-in-out"
+                style={{ width: `${step.pct}%` }}
+              />
+              {/* shimmer sweep */}
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer-bar"
+                style={{ width: `${step.pct}%` }}
+              />
             </div>
-            <div className="mt-1.5 flex justify-between">
-              {STEPS.map((s, i) => (
-                <span key={s.key} className={`text-xs transition-colors ${i <= stepIdx ? "text-accent-600 font-medium" : "text-stone-300"}`}>
-                  {s.label}
-                </span>
-              ))}
+
+            {/* step labels */}
+            <div className="mt-2 flex justify-between">
+              {STEPS.map((s, i) => {
+                const isActive = i === stepIdx;
+                const isDone   = i < stepIdx;
+                return (
+                  <span
+                    key={s.key}
+                    className={`flex items-center gap-1 text-xs transition-all duration-500 ${
+                      isActive ? "text-accent-600 font-semibold scale-105 origin-left" :
+                      isDone   ? "text-accent-400 font-medium" :
+                                 "text-stone-300"
+                    }`}
+                  >
+                    {isActive && (
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-500 animate-pulse" />
+                    )}
+                    {isDone && (
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-400" />
+                    )}
+                    {s.label}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}

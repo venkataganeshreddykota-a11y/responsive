@@ -1,4 +1,5 @@
 import logging
+import json
 import re
 import requests
 from urllib.parse import urljoin, urlparse, quote
@@ -72,21 +73,7 @@ def scan_status(request, report_id):
     return Response(ScanReportSerializer(report).data)
 
 
-# Headers that must never be forwarded to the browser — they break iframe embedding
-_IFRAME_BLOCK_HEADERS = {
-    "x-frame-options",
-    "content-security-policy",
-    "content-security-policy-report-only",
-    "strict-transport-security",
-}
-
-# Headers that are hop-by-hop and must not be forwarded
-_HOP_BY_HOP_HEADERS = {
-    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-    "te", "trailers", "transfer-encoding", "upgrade",
-}
-
-_TIMEOUT = 15  # seconds
+PROXY_TIMEOUT = 30
 
 
 def _proxy_url(target_url):
@@ -102,15 +89,31 @@ def _rewrite_html(html, base_url):
     """
     parsed = urlparse(base_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
+    target_path = parsed.path or "/"
+    if parsed.query:
+        target_path = f"{target_path}?{parsed.query}"
+    if parsed.fragment:
+        target_path = f"{target_path}#{parsed.fragment}"
+    # Calculate base path - if URL ends with / or has no extension, use as-is
+    # Otherwise, strip the filename
+    path = parsed.path
+    if path.endswith('/') or '.' not in path.split('/')[-1]:
+        base_path = path.rstrip('/')
+    else:
+        base_path = path.rsplit('/', 1)[0] if '/' in path else ''
 
     def make_absolute(url):
         url = url.strip()
-        if not url or url.startswith(("data:", "javascript:", "mailto:", "#", "//")):
-            if url.startswith("//"):
-                return _proxy_url("https:" + url)
+        if not url or url.startswith(("data:", "javascript:", "mailto:", "#")):
             return url
+        if url.startswith("//"):
+            return _proxy_url("https:" + url)
         if url.startswith(("http://", "https://")):
             return _proxy_url(url)
+        # Handle absolute paths from root
+        if url.startswith('/'):
+            return _proxy_url(origin + url)
+        # Handle relative paths
         return _proxy_url(urljoin(base_url, url))
 
     def rewrite_attr(match):
@@ -145,10 +148,6 @@ def _rewrite_html(html, base_url):
             abs_url = raw if raw.startswith(("http://", "https://")) else urljoin(base_url, raw)
             return f'url={_proxy_url(abs_url)}'
         return re.sub(r'url=([^\s"\'>;]+)', replace_url, full, flags=re.IGNORECASE)
-
-    # Strip or rewrite <base href> — it would override all relative URL resolution
-    # inside the iframe and break the proxy rewriting
-    html = re.sub(r'<base[^>]+>', '', html, flags=re.IGNORECASE)
 
     # Rewrite src, href, action attributes (quoted)
     html = re.sub(
@@ -190,6 +189,54 @@ def _rewrite_html(html, base_url):
         flags=re.IGNORECASE,
     )
 
+    # IMPORTANT: Inject base tag BEFORE the nav shim so the regex can find <head>
+    # Rewrite <base href> to point through the proxy instead of removing it
+    # This is critical for SPAs that rely on base for asset resolution
+    def rewrite_base(match):
+        # Extract the href value
+        href_match = re.search(r'href=(["\'])([^"\']+)\1', match.group(0), re.IGNORECASE)
+        if href_match:
+            original_href = href_match.group(2)
+            # Make it absolute and proxy it
+            if original_href.startswith('/'):
+                new_href = _proxy_url(origin + original_href)
+            elif original_href.startswith(('http://', 'https://')):
+                new_href = _proxy_url(original_href)
+            else:
+                new_href = _proxy_url(urljoin(base_url, original_href))
+            return f'<base href="{new_href}">'
+        # If no href found, inject one pointing to the origin through proxy
+        if base_path:
+            return f'<base href="{_proxy_url(origin + base_path + "/")}">'
+        else:
+            return f'<base href="{_proxy_url(origin + "/")}">'
+
+    html = re.sub(r'<base[^>]*>', rewrite_base, html, flags=re.IGNORECASE)
+
+    # If no base tag exists, inject one for SPAs (they often need it)
+    has_base = bool(re.search(r'<base[^>]*>', html, re.IGNORECASE))
+    logger.debug(f"Base tag exists after rewrite: {has_base}")
+
+    if not has_base:
+        # Construct the base URL properly
+        if base_path:
+            base_href = _proxy_url(origin + base_path + "/")
+        else:
+            base_href = _proxy_url(origin + "/")
+        base_tag = f'<base href="{base_href}">'
+        logger.debug(f"Injecting base tag: {base_tag}")
+
+        has_head = bool(re.search(r"<head[^>]*>", html, re.IGNORECASE))
+        logger.debug(f"Head tag found: {has_head}")
+
+        if has_head:
+            html = re.sub(r"(<head[^>]*>)", r"\1" + base_tag, html, count=1, flags=re.IGNORECASE)
+            logger.debug(f"Base tag injected after <head>")
+        else:
+            # No head tag, inject at the start
+            html = base_tag + html
+            logger.debug(f"Base tag injected at start (no head tag)")
+
     # Inject a JS shim that intercepts runtime navigation so the iframe
     # never escapes the proxy (handles window.location, history API, etc.)
     nav_shim = f"""<script>
@@ -206,18 +253,48 @@ if ('serviceWorker' in navigator) {{
 }}
 
 (function() {{
-  var _PROXY = 'http://localhost:8000/api/scanner/proxy/?url=';
+  // Use relative path so it works regardless of how the backend is accessed
+  var _PROXY = '/api/scanner/proxy/?url=';
   var _ORIGIN = '{origin}';
+  var _BASE_PATH = '{base_path}';
+  var _TARGET_PATH = {json.dumps(target_path)};
+
+  // SPAs read window.location.pathname during startup. The iframe is loaded
+  // through /api/scanner/proxy/, so expose the target route before app code runs.
+  try {{
+    if (window.location.pathname !== _TARGET_PATH.split(/[?#]/)[0]) {{
+      history.replaceState(history.state, document.title, _TARGET_PATH);
+    }}
+  }} catch(e) {{}}
 
   function toProxyUrl(url) {{
     if (!url || url.startsWith('data:') || url.startsWith('javascript:') || url.startsWith('#')) return url;
     if (url.startsWith('//')) url = 'https:' + url;
     if (!url.startsWith('http://') && !url.startsWith('https://')) {{
-      url = _ORIGIN + (url.startsWith('/') ? '' : '/') + url;
+      // Handle absolute paths from root
+      if (url.startsWith('/')) {{
+        url = _ORIGIN + url;
+      }} else {{
+        // Handle relative paths
+        url = _ORIGIN + _BASE_PATH + '/' + url;
+      }}
     }}
     // Don't double-proxy
-    if (url.indexOf('localhost:8000/api/scanner/proxy/') !== -1) return url;
+    if (url.indexOf('/api/scanner/proxy/') !== -1) return url;
     return _PROXY + encodeURIComponent(url);
+  }}
+
+  function toAppHistoryUrl(url) {{
+    if (!url || url.startsWith('#')) return url;
+    try {{
+      var absolute = new URL(url, _ORIGIN + (_BASE_PATH || '/') + '/');
+      if (absolute.origin === _ORIGIN) {{
+        return absolute.pathname + absolute.search + absolute.hash;
+      }}
+      return toProxyUrl(absolute.href);
+    }} catch(e) {{
+      return url;
+    }}
   }}
 
   // Intercept window.location.href assignments via a polling approach
@@ -235,11 +312,11 @@ if ('serviceWorker' in navigator) {{
   var _push = history.pushState.bind(history);
   var _replace = history.replaceState.bind(history);
   history.pushState = function(state, title, url) {{
-    if (url) url = toProxyUrl(url);
+    if (url) url = toAppHistoryUrl(url);
     return _push(state, title, url);
   }};
   history.replaceState = function(state, title, url) {{
-    if (url) url = toProxyUrl(url);
+    if (url) url = toAppHistoryUrl(url);
     return _replace(state, title, url);
   }};
 
@@ -256,10 +333,7 @@ if ('serviceWorker' in navigator) {{
     var href = el.getAttribute('href');
     if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) return;
     e.preventDefault();
-    var abs = href.startsWith('http://') || href.startsWith('https://')
-      ? href
-      : (_ORIGIN + (href.startsWith('/') ? '' : '/') + href);
-    window.location.href = toProxyUrl(abs);
+    window.location.href = toProxyUrl(href);
   }}, true);
 
   // Intercept GET form submissions
@@ -267,12 +341,9 @@ if ('serviceWorker' in navigator) {{
     var form = e.target;
     if (!form || (form.method && form.method.toLowerCase() === 'post')) return;
     var action = form.getAttribute('action') || window.location.href;
-    var abs = action.startsWith('http://') || action.startsWith('https://')
-      ? action
-      : (_ORIGIN + (action.startsWith('/') ? '' : '/') + action);
     var params = new URLSearchParams(new FormData(form)).toString();
     e.preventDefault();
-    window.location.href = toProxyUrl(abs + (params ? '?' + params : ''));
+    window.location.href = toProxyUrl(action + (params ? '?' + params : ''));
   }}, true);
 
   // Neutralize WebSockets
@@ -291,9 +362,9 @@ if ('serviceWorker' in navigator) {{
   var originalFetch = window.fetch;
   window.fetch = async function(resource, init) {{
     var targetUrl = resource instanceof Request ? resource.url : resource;
-    // If it's an absolute URL and not already proxied, route it through the proxy
-    if (typeof targetUrl === 'string' && targetUrl.startsWith('http') && targetUrl.indexOf('localhost:8000/api/scanner/proxy/') === -1) {{
-      targetUrl = _PROXY + encodeURIComponent(targetUrl);
+    // Route absolute and root-relative requests through the proxy.
+    if (typeof targetUrl === 'string' && targetUrl.indexOf('/api/scanner/proxy/') === -1) {{
+      targetUrl = toProxyUrl(targetUrl);
       if (resource instanceof Request) {{
         resource = new Request(targetUrl, init);
       }} else {{
@@ -307,16 +378,19 @@ if ('serviceWorker' in navigator) {{
   var originalXHR = window.XMLHttpRequest.prototype.open;
   window.XMLHttpRequest.prototype.open = function(method, url) {{
     var rest = Array.prototype.slice.call(arguments, 2);
-    if (typeof url === 'string' && url.startsWith('http') && url.indexOf(_PROXY) === -1) {{
-      url = _PROXY + encodeURIComponent(url);
+    if (typeof url === 'string' && url.indexOf('/api/scanner/proxy/') === -1) {{
+      url = toProxyUrl(url);
     }}
     return originalXHR.apply(this, [method, url].concat(rest));
   }};
 }})();
 </script>"""
 
-    # Inject shim as early as possible — right after <head> or at the top
-    if re.search(r"<head[^>]*>", html, re.IGNORECASE):
+    # Inject shim as early as possible — right after the base tag (or <head> if no base)
+    if re.search(r"<base[^>]*>", html, re.IGNORECASE):
+        # Inject after the base tag we just added
+        html = re.sub(r"(<base[^>]*>)", r"\1" + nav_shim, html, count=1, flags=re.IGNORECASE)
+    elif re.search(r"<head[^>]*>", html, re.IGNORECASE):
         html = re.sub(r"(<head[^>]*>)", r"\1" + nav_shim, html, count=1, flags=re.IGNORECASE)
     else:
         html = nav_shim + html
@@ -333,29 +407,55 @@ def iframe_proxy(request):
     if not target_url.startswith(("http://", "https://")):
         return HttpResponse("Only http/https URLs are supported.", status=400)
 
+    logger.info(f"Proxy request for: {target_url}")
+
     try:
         resp = requests.get(
             target_url,
             headers={
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,*/*;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate',
+                'Referer': target_url,
             },
-            timeout=15,
+            timeout=PROXY_TIMEOUT,
             allow_redirects=True,
+            verify=True,
         )
+        logger.info(f"Proxy response: {resp.status_code}, Content-Type: {resp.headers.get('Content-Type')}, Size: {len(resp.content)} bytes")
     except requests.exceptions.Timeout:
+        logger.error(f"Proxy timeout for: {target_url}")
         return HttpResponse("Target URL timed out.", status=504)
+    except requests.exceptions.SSLError as exc:
+        logger.error(f"SSL error for {target_url}: {exc}")
+        return HttpResponse(f"SSL certificate error: {exc}", status=502)
     except requests.exceptions.RequestException as exc:
+        logger.error(f"Proxy error for {target_url}: {exc}")
         return HttpResponse(f"Proxy fetch error: {exc}", status=502)
 
     content_type = resp.headers.get('Content-Type', 'application/octet-stream')
 
+    # Handle cases where content-type is missing but URL suggests type
+    if 'application/octet-stream' in content_type or not content_type:
+        parsed_url = urlparse(target_url)
+        path = parsed_url.path.lower()
+        if path.endswith('.js') or path.endswith('.mjs'):
+            content_type = 'application/javascript'
+        elif path.endswith('.css'):
+            content_type = 'text/css'
+        elif path.endswith('.json'):
+            content_type = 'application/json'
+        elif path.endswith(('.html', '.htm')):
+            content_type = 'text/html'
+
     _BLOCKED = {
         'x-frame-options', 'content-security-policy', 'content-security-policy-report-only',
         'strict-transport-security', 'transfer-encoding', 'content-encoding',
+        'content-length',
         'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
         'te', 'trailers', 'upgrade',
+        'set-cookie',
         # Prevent nosniff from blocking proxied JS/CSS with rewritten content-types
         'x-content-type-options',
         # Prevent referrer leaking the proxy URL to external servers
@@ -374,7 +474,7 @@ def iframe_proxy(request):
 
         proxy_response = HttpResponse(content, content_type='text/html; charset=utf-8')
 
-    elif 'text/css' in content_type:
+    elif 'text/css' in content_type or 'css' in content_type:
         # Rewrite url() and @import references inside CSS files
         content = resp.content.decode('utf-8', errors='ignore')
 
@@ -398,6 +498,31 @@ def iframe_proxy(request):
         content = re.sub(r'@import\s+(?:url\()?["\']?([^"\')\s]+)["\']?\)?', rewrite_import, content, flags=re.IGNORECASE)
 
         proxy_response = HttpResponse(content, content_type=content_type)
+
+    elif 'javascript' in content_type or 'application/json' in content_type or content_type.startswith('text/javascript') or content_type.startswith('application/x-javascript'):
+        # Rewrite root-relative asset strings in JS bundles. Vite/SPA bundles often
+        # lazy-load chunks or images from "/assets/..." after the initial HTML parse.
+        if 'javascript' in content_type or 'x-javascript' in content_type:
+            content = resp.content.decode('utf-8', errors='ignore')
+            parsed_target = urlparse(target_url)
+            target_origin = f"{parsed_target.scheme}://{parsed_target.netloc}"
+
+            def rewrite_js_asset(m):
+                quote_char = m.group(1)
+                path = m.group(2)
+                return f"{quote_char}{_proxy_url(target_origin + '/' + path)}{quote_char}"
+
+            content = re.sub(
+                r'(["\'])/(assets/[^"\']+\.(?:js|mjs|css|png|jpe?g|webp|svg|gif|ico|woff2?|ttf|json|mp4|webm|avif))\1',
+                rewrite_js_asset,
+                content,
+                flags=re.IGNORECASE,
+            )
+            proxy_response = HttpResponse(content, content_type='application/javascript; charset=utf-8')
+        else:
+            proxy_response = HttpResponse(resp.content, content_type=content_type)
+        logger.debug(f"Proxying JS/JSON: {target_url[:100]}")
+
     else:
         proxy_response = HttpResponse(resp.content, content_type=content_type)
 
