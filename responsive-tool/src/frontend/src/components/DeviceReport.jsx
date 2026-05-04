@@ -86,7 +86,7 @@ function IssueItem({ issue }) {
 function BreakpointFixItem({ item }) {
   const cfg = PRIORITY[item.priority] || PRIORITY.low;
   return (
-    <div className={`rounded-xl border-l-2 p-3 ${cfg.style}`}>
+    <div className={`rounded-lg border-l-2 p-3 ${cfg.style}`}>
       <div className="mb-1.5 flex flex-wrap items-center gap-2">
         <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
         <span className="text-xs font-semibold text-surface-body">{item.viewport}</span>
@@ -106,7 +106,7 @@ function BreakpointFixItem({ item }) {
 
 function GeneralFixItem({ item }) {
   return (
-    <div className="flex gap-3 rounded-xl border border-surface-border bg-white p-3 shadow-sm">
+    <div className="flex gap-3 rounded-lg border border-surface-border bg-white p-3 shadow-sm">
       <span className="mt-0.5 shrink-0 text-surface-muted">
         {CATEGORY_ICON[item.category] || <FiAlertCircle size={13} />}
       </span>
@@ -136,10 +136,10 @@ function DeviceCard({ device, deviceStatus, issues, advice }) {
   const fixCount   = deviceFixes.length;
 
   return (
-    <div className="glass flex flex-col overflow-hidden rounded-2xl border border-surface-border shadow-glass">
+    <div className="panel flex flex-col overflow-hidden">
       {/* Header */}
       <div className={`flex items-center gap-3 border-b px-4 py-3 ${statusCfg?.header || "border-surface-border bg-white/40"}`}>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/70 text-surface-muted shadow-sm">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/70 text-surface-muted shadow-sm">
           <Icon size={15} />
         </span>
         <div className="flex-1 min-w-0">
@@ -250,10 +250,10 @@ export default function DeviceReport({ issues, issueGroups, advice, deviceStatus
         ))}
       </div>
 
-      {/* General suggestions — shown once below all cards */}
+      {/* General suggestions - shown once below all cards */}
       {generalSuggestions.length > 0 && (
-        <div className="glass rounded-2xl border border-surface-border p-4 shadow-glass">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-surface-muted">
+        <div className="panel p-4">
+          <p className="section-label mb-3">
             General Improvements
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -266,3 +266,4 @@ export default function DeviceReport({ issues, issueGroups, advice, deviceStatus
     </div>
   );
 }
+

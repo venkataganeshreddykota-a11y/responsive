@@ -22,7 +22,7 @@ const STEPS = [
 ];
 
 function SkeletonPanel({ h = "h-48" }) {
-  return <div className={`shimmer rounded-2xl ${h}`} />;
+  return <div className={`shimmer rounded-lg ${h}`} />;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -123,14 +123,14 @@ const UrlInput = forwardRef(function UrlInput({ value, onChange, onSubmit, loadi
         aria-autocomplete="list"
         aria-expanded={open && suggestions.length > 0}
         autoComplete="off"
-        className="w-full rounded-xl border border-surface-border bg-white py-3 pl-10 pr-4 text-sm text-surface-body placeholder-surface-muted shadow-sm outline-none transition focus:border-accent-400 focus:ring-2 focus:ring-accent-400/20"
+        className="w-full rounded-lg border border-surface-border bg-white py-3 pl-10 pr-4 text-sm text-surface-body placeholder-surface-muted shadow-sm outline-none transition focus:border-accent-400 focus:ring-2 focus:ring-accent-400/20"
       />
 
       {/* dropdown */}
       {open && suggestions.length > 0 && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-xl border border-surface-border bg-white shadow-glass-hover animate-fade-in"
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-lg border border-surface-border bg-white shadow-glass-hover animate-fade-in"
         >
           {suggestions.map((u, i) => (
             <li
@@ -224,8 +224,8 @@ export default function Scanner() {
       <Navbar />
 
       {/* Search bar row */}
-      <div className="border-b border-surface-border bg-white/60 px-6 py-4">
-        <form onSubmit={handleScan} className="flex w-full gap-2.5">
+      <div className="border-b border-surface-border bg-white/70 px-4 py-4 sm:px-6">
+        <form onSubmit={handleScan} className="flex w-full flex-col gap-2.5 sm:flex-row">
           <UrlInput
             ref={urlInputRef}
             value={url}
@@ -235,14 +235,14 @@ export default function Scanner() {
           <button
             type="submit"
             disabled={loading}
-            className="flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-3 text-sm font-semibold text-white shadow-orange-glow transition hover:bg-accent-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-2 rounded-lg bg-accent-500 px-6 py-3 text-sm font-semibold text-white shadow-orange-glow transition hover:bg-accent-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? (
               <>
                 <span className="h-3.5 w-3.5 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />
-                {step.label}…
+                {step.label}...
               </>
-            ) : "Analyse"}
+            ) : "Analyze"}
           </button>
         </form>
 
@@ -264,7 +264,7 @@ export default function Scanner() {
             </div>
 
             {/* step labels */}
-            <div className="mt-2 flex justify-between">
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:flex sm:justify-between">
               {STEPS.map((s, i) => {
                 const isActive = i === stepIdx;
                 const isDone   = i < stepIdx;
@@ -295,7 +295,7 @@ export default function Scanner() {
       {/* Main content area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {!loading && !result ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
             <div className="flex gap-5 opacity-20 text-surface-muted">
               <FiSmartphone size={40} /><FiTablet size={40} /><MdLaptop size={40} /><FiMonitor size={40} />
             </div>
@@ -303,7 +303,7 @@ export default function Scanner() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col overflow-y-auto scrollbar-thin">
-            <div className="px-6 pt-5">
+            <div className="px-4 pt-5 sm:px-6">
               {result ? (
                 <StatusBanner
                   verdict={result.verdict}
@@ -316,8 +316,8 @@ export default function Scanner() {
               ) : <SkeletonPanel h="h-28" />}
             </div>
 
-            <div className="px-6 pt-5">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-surface-muted">
+            <div className="px-4 pt-5 sm:px-6">
+              <p className="section-label mb-2">
                 Screenshots by Device
               </p>
               <ScreenshotViewer
@@ -328,10 +328,10 @@ export default function Scanner() {
               />
             </div>
 
-            <div className="px-6 py-5">
+            <div className="px-4 py-5 sm:px-6">
               {result && (
                 <>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-surface-muted">
+                  <p className="section-label mb-3">
                     Issues &amp; Fixes by Device
                   </p>
                   <DeviceReport
@@ -354,3 +354,4 @@ export default function Scanner() {
     </div>
   );
 }
+

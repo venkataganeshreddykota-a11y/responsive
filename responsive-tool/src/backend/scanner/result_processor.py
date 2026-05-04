@@ -51,6 +51,45 @@ _HIGHLIGHT_KEYWORDS = [
     "zero-height", "invisible", "timeout",
 ]
 
+_DEDUCTIONS = {"critical": 20, "warning": 8, "info": 2}
+
+
+def _compute_score(issues: list) -> float:
+    score = 100.0
+    for issue in issues:
+        score -= _DEDUCTIONS.get(issue.get("severity", "info"), 2)
+    return max(0.0, score)
+
+
+def _flatten_device_issues(device_results: list) -> list:
+    out = []
+    for result in device_results or []:
+        out.extend(result.get("issues", []) or [])
+    return out
+
+
+def _is_static_viewport_issue(issue: dict) -> bool:
+    if issue.get("source") == "playwright":
+        return False
+    text = (issue.get("title", "") + " " + issue.get("description", "")).lower()
+    return "viewport meta" in text and ("missing" in text or "width=device-width" in text)
+
+
+def actionable_issues(issues: list, device_results: list) -> list:
+    rendered = _flatten_device_issues(device_results)
+    if not device_results:
+        return issues or []
+
+    static_viewport = [issue for issue in (issues or []) if _is_static_viewport_issue(issue)]
+    seen = set()
+    out = []
+    for issue in static_viewport + rendered:
+        key = (issue.get("title", ""), issue.get("device", ""), issue.get("source", ""))
+        if key not in seen:
+            seen.add(key)
+            out.append(issue)
+    return out
+
 
 def _categorise(issue: dict) -> str:
     text = (issue.get("title", "") + " " + issue.get("description", "")).lower()
@@ -92,9 +131,9 @@ def device_status(device_results: list) -> list:
         issues = dr.get("issues", [])
         crits  = sum(1 for i in issues if i.get("severity") == "critical")
         warns  = sum(1 for i in issues if i.get("severity") == "warning")
-        if crits >= 2 or (crits >= 1 and warns >= 2):
+        if crits >= 2 or (crits >= 1 and warns >= 1):
             status = "broken"
-        elif crits >= 1 or warns >= 2:
+        elif crits >= 1 or warns >= 1:
             status = "needs_fix"
         else:
             status = "good"
@@ -120,6 +159,8 @@ def resolution_advice(device_results: list, suggestions: list) -> list:
     advice = []
     statuses = device_status(device_results)
     for ds in statuses:
+        if ds["issue_count"] == 0:
+            continue
         bp = _BREAKPOINT_ADVICE.get(ds["device"], {})
         if ds["status"] == "broken":
             priority = "high"
@@ -144,15 +185,18 @@ def resolution_advice(device_results: list, suggestions: list) -> list:
 
 
 def process(score: float, issues: list, suggestions: list, device_results: list) -> dict:
-    verdict_data   = compute_verdict(score, issues)
-    grouped_issues = group_issues(issues)
+    effective_issues = actionable_issues(issues, device_results)
+    effective_score  = _compute_score(effective_issues) if device_results else score
+    verdict_data   = compute_verdict(effective_score, effective_issues)
+    grouped_issues = group_issues(effective_issues)
     dev_statuses   = device_status(device_results)
     res_advice     = resolution_advice(device_results, suggestions)
     return {
         "verdict":           verdict_data["verdict"],
         "verdict_label":     verdict_data["label"],
         "verdict_detail":    verdict_data["detail"],
-        "score":             round(score, 1),
+        "score":             round(effective_score, 1),
+        "issues":            effective_issues,
         "issue_groups":      grouped_issues,
         "device_status":     dev_statuses,
         "resolution_advice": res_advice,

@@ -61,9 +61,6 @@ def check_viewport_meta(soup):
             suggestions.append({"category": "viewport", "title": "Fix viewport meta content",
                 "detail": "Set content=\"width=device-width, initial-scale=1\" on your viewport meta tag."})
         if "user-scalable=no" in content or "maximum-scale=1" in content:
-            issues.append({"severity": "warning", "title": "Zoom disabled for users",
-                "description": "user-scalable=no or maximum-scale=1 prevents users from zooming, harming accessibility.",
-                "device": "Mobile"})
             suggestions.append({"category": "viewport", "title": "Allow user zoom",
                 "detail": "Remove user-scalable=no and maximum-scale=1 from your viewport meta tag."})
     return issues, suggestions
@@ -72,16 +69,20 @@ def check_viewport_meta(soup):
 def check_media_queries(css_text):
     issues, suggestions = [], []
     if not re.search(r"@media\s*\(", css_text, re.I):
-        issues.append({"severity": "critical", "title": "No CSS media queries detected",
-            "description": "No @media rules found. The layout will not adapt to different screen sizes.",
-            "device": "Mobile, Tablet, Laptop"})
+        suggestions.append({"category": "layout", "title": "Add responsive media queries",
+            "detail": "If the rendered scan shows layout problems, add breakpoint rules such as @media (max-width: 768px) { ... }."})
+    elif not re.search(r"@media[^{]*(?:max-width\s*:\s*(?:480|600|767|768)px|min-width\s*:\s*(?:320|375|414)px)", css_text, re.I):
+        suggestions.append({"category": "layout", "title": "Add a mobile breakpoint",
+            "detail": "If mobile screenshots show layout problems, add @media (max-width: 768px) { ... } rules."})
+    return issues, suggestions
+    if not re.search(r"@media\s*\(", css_text, re.I):
         suggestions.append({"category": "layout", "title": "Add responsive media queries",
             "detail": "Use @media (max-width: 768px) { … } breakpoints to adjust layout for smaller screens."})
     else:
         if not re.search(r"@media[^{]*(?:max-width\s*:\s*(?:480|600|767|768)px|min-width\s*:\s*(?:320|375|414)px)", css_text, re.I):
-            issues.append({"severity": "warning", "title": "No mobile-specific breakpoint found",
+            """
                 "description": "Media queries exist but none target common mobile widths (≤768px).",
-                "device": "Mobile"})
+            """
             suggestions.append({"category": "layout", "title": "Add a mobile breakpoint",
                 "detail": "Add @media (max-width: 768px) { … } rules to handle mobile layouts explicitly."})
     return issues, suggestions
@@ -90,6 +91,10 @@ def check_media_queries(css_text):
 def check_fixed_widths(css_text):
     issues, suggestions = [], []
     large_fixed = [int(v) for v in re.findall(r"width\s*:\s*(\d+)px", css_text) if int(v) > 480]
+    if large_fixed:
+        suggestions.append({"category": "layout", "title": "Review fixed widths",
+            "detail": f"Found {len(large_fixed)} CSS width rule(s) over 480px. If rendered overflow appears, replace fixed widths with max-width, %, or vw units."})
+    return issues, suggestions
     if large_fixed:
         issues.append({"severity": "warning", "title": f"Fixed-width elements detected (largest: {max(large_fixed)}px)",
             "description": f"Found {len(large_fixed)} CSS rule(s) with fixed pixel widths > 480px. These will overflow on mobile.",
@@ -103,6 +108,14 @@ def check_images(soup, css_text):
     issues, suggestions = [], []
     imgs = soup.find_all("img")
     fixed_imgs = [img.get("width") for img in imgs if img.get("width") and str(img.get("width")).isdigit() and int(img.get("width")) > 480]
+    if fixed_imgs:
+        suggestions.append({"category": "images", "title": "Make images fluid",
+            "detail": "Remove fixed width/height attributes and add img { max-width: 100%; height: auto; } to CSS."})
+    imgs_without_srcset = [i for i in imgs if not i.get("srcset") and not i.get("sizes")]
+    if len(imgs_without_srcset) > 3:
+        suggestions.append({"category": "images", "title": "Use srcset for responsive images",
+            "detail": f"{len(imgs_without_srcset)} images lack srcset/sizes. Add srcset to serve appropriately sized images."})
+    return issues, suggestions
     if fixed_imgs:
         issues.append({"severity": "warning", "title": f"{len(fixed_imgs)} image(s) with fixed width attribute",
             "description": "Images with hard-coded width attributes won't scale down on small screens.",
@@ -120,6 +133,14 @@ def check_font_sizes(css_text):
     issues, suggestions = [], []
     tiny_vals = [int(v) for v in re.findall(r"font-size\s*:\s*(\d+)px", css_text) if int(v) < 12]
     if tiny_vals:
+        suggestions.append({"category": "typography", "title": "Review small font sizes",
+            "detail": f"Found {len(tiny_vals)} font-size rule(s) below 12px. Confirm readability in the rendered screenshots."})
+    px_fonts = re.findall(r"font-size\s*:\s*\d+px", css_text)
+    if len(px_fonts) > 5:
+        suggestions.append({"category": "typography", "title": "Use relative font units",
+            "detail": f"Found {len(px_fonts)} px-based font-size rules. Switch to rem/em for better scaling."})
+    return issues, suggestions
+    if tiny_vals:
         issues.append({"severity": "warning", "title": f"Small font sizes detected ({min(tiny_vals)}px)",
             "description": f"Found {len(tiny_vals)} font-size rule(s) below 12px. Text may be unreadable on mobile.",
             "device": "Mobile"})
@@ -134,6 +155,10 @@ def check_touch_targets(soup, css_text):
     issues, suggestions = [], []
     btn_small = re.findall(r"(?:button|\.btn)[^{]*\{[^}]*height\s*:\s*([1-3]\d)px", css_text, re.I)
     if btn_small:
+        suggestions.append({"category": "touch", "title": "Increase touch target size",
+            "detail": "For mobile controls, aim for comfortable tap targets around 44x44px."})
+    return issues, suggestions
+    if btn_small:
         issues.append({"severity": "warning", "title": "Small touch targets",
             "description": "Some buttons/links appear to have heights below 44px, making them hard to tap.",
             "device": "Mobile, Tablet"})
@@ -147,6 +172,10 @@ def check_horizontal_scroll(soup):
     unwrapped = [t for t in soup.find_all("table")
                  if "overflow" not in " ".join(t.parent.get("class", [])) and
                     "scroll" not in " ".join(t.parent.get("class", []))]
+    if unwrapped:
+        suggestions.append({"category": "layout", "title": "Wrap wide tables",
+            "detail": "If tables overflow in rendered screenshots, wrap them in a container with overflow-x: auto."})
+    return issues, suggestions
     if unwrapped:
         issues.append({"severity": "warning", "title": f"{len(unwrapped)} table(s) may cause horizontal scroll",
             "description": "Tables without a scrollable wrapper overflow on narrow screens.",

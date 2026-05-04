@@ -1,9 +1,13 @@
 from rest_framework import serializers
 from .models import ScanURL, ScanReport
 from .result_processor import process as process_results
+from .result_processor import compute_verdict
+from .result_processor import actionable_issues
 
 
 class ScanReportSerializer(serializers.ModelSerializer):
+    score             = serializers.SerializerMethodField()
+    issues            = serializers.SerializerMethodField()
     verdict           = serializers.SerializerMethodField()
     verdict_label     = serializers.SerializerMethodField()
     verdict_detail    = serializers.SerializerMethodField()
@@ -27,8 +31,8 @@ class ScanReportSerializer(serializers.ModelSerializer):
         cache_attr = "_processed_cache"
         if hasattr(obj, cache_attr):
             return getattr(obj, cache_attr)
-        cached = (obj.raw_result or {}).get("processed")
-        if not cached and obj.status == "completed":
+        cached = None
+        if obj.status == "completed":
             cached = process_results(
                 score=obj.score or 0,
                 issues=obj.issues or [],
@@ -38,6 +42,15 @@ class ScanReportSerializer(serializers.ModelSerializer):
         result = cached or {}
         setattr(obj, cache_attr, result)
         return result
+
+    def get_score(self, obj):
+        return self._processed(obj).get("score", obj.score)
+
+    def get_issues(self, obj):
+        return self._processed(obj).get(
+            "issues",
+            actionable_issues(obj.issues or [], obj.device_results or []),
+        )
 
     def get_verdict(self, obj):        return self._processed(obj).get("verdict")
     def get_verdict_label(self, obj):  return self._processed(obj).get("verdict_label")
@@ -61,9 +74,13 @@ class ScanReportListSerializer(serializers.ModelSerializer):
         cache_attr = "_processed_cache"
         if hasattr(obj, cache_attr):
             return getattr(obj, cache_attr)
-        cached = (obj.raw_result or {}).get("processed") or {}
-        setattr(obj, cache_attr, cached)
-        return cached
+        verdict = compute_verdict(obj.score or 0, obj.issues or [])
+        result = {
+            "verdict": verdict["verdict"],
+            "verdict_label": verdict["label"],
+        }
+        setattr(obj, cache_attr, result)
+        return result
 
     def get_verdict(self, obj):       return self._processed(obj).get("verdict")
     def get_verdict_label(self, obj): return self._processed(obj).get("verdict_label")
@@ -84,7 +101,6 @@ class ScanURLSerializer(serializers.ModelSerializer):
         return ScanReportListSerializer(report).data if report else None
 
     def create(self, validated_data):
-        validated_data["user"] = self.context["request"].user
         return super().create(validated_data)
 
 

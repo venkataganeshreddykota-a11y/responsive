@@ -21,6 +21,10 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  button, input, textarea, select {
+    font: inherit;
+  }
 }
 
 @layer utilities {
@@ -32,12 +36,27 @@
     border: 1px solid rgba(255, 255, 255, 0.55);
   }
 
+  .panel {
+    border-radius: 0.5rem;
+    border: 1px solid #e4e1da;
+    background: rgba(255, 255, 255, 0.78);
+    box-shadow: 0 2px 16px 0 rgba(0,0,0,0.07), 0 1px 3px 0 rgba(0,0,0,0.05);
+  }
+
+  .section-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: #a09d97;
+  }
+
   .glass-hover:hover {
     background: rgba(255, 255, 255, 0.85);
     box-shadow: 0 4px 24px 0 rgba(0,0,0,0.10);
   }
 
-  /* Skeleton shimmer — light mode */
+  /* Skeleton shimmer - light mode */
   .shimmer {
     background: linear-gradient(90deg, #e8e5de 25%, #d6d2c9 50%, #e8e5de 75%);
     background-size: 600px 100%;
@@ -52,3 +71,4 @@
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: #d6d2c9; border-radius: 999px; }
 }
+

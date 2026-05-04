@@ -154,6 +154,7 @@ def _build_issues(device: str, overflow, img_overflow, touch, invisible, overlap
         issues.append({"severity": "warning", "title": f"{len(img_overflow)} image(s) overflow their container at {device}",
             "description": "Images are wider than their parent containers. Add `img { max-width: 100%; height: auto; }`.",
             "device": device.capitalize(), "source": "playwright"})
+    return issues
     if touch:
         issues.append({"severity": "warning", "title": f"{len(touch)} small touch target(s) at {device}",
             "description": f"Interactive elements smaller than 44×44px. Example: <{touch[0]['tag']}> is {touch[0]['width']}×{touch[0]['height']}px.",

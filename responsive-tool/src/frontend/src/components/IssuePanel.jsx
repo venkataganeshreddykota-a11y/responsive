@@ -51,7 +51,7 @@ function GroupedList({ groups }) {
         const sev    = SEV[group.severity_max] || SEV.info;
         const isOpen = !!open[gi];
         return (
-          <div key={gi} className={`overflow-hidden rounded-xl border ${sev.header}`}>
+          <div key={gi} className={`overflow-hidden rounded-lg border ${sev.header}`}>
             <button
               className={`flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:brightness-95 ${sev.header}`}
               onClick={() => setOpen((p) => ({ ...p, [gi]: !p[gi] }))}
@@ -81,7 +81,7 @@ export default function IssuePanel({ issues, issueGroups, title = "Detected Issu
     : (issues || []).length;
 
   return (
-    <div className="glass rounded-2xl border border-surface-border p-5 shadow-glass">
+    <div className="panel p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-surface-body">{title}</h3>
         {total > 0 && (

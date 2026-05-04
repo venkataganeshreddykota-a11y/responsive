@@ -49,10 +49,10 @@ export default function StatusBanner({ verdict, verdictLabel, verdictDetail, sco
   const { Icon } = cfg;
 
   return (
-    <div className={`glass animate-fade-in rounded-2xl border p-5 shadow-glass ${cfg.bg} ${cfg.border}`}>
+    <div className={`animate-fade-in rounded-lg border p-5 shadow-glass ${cfg.bg} ${cfg.border}`}>
       <div className="flex flex-wrap items-center gap-5">
         <div className="flex flex-1 items-start gap-3 min-w-[180px]">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${cfg.iconBg}`}>
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${cfg.iconBg}`}>
             <Icon size={22} />
           </div>
           <div>
@@ -76,7 +76,7 @@ export default function StatusBanner({ verdict, verdictLabel, verdictDetail, sco
                 className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${DEVICE_PILL[ds.status] || DEVICE_PILL.needs_fix}`}>
                 {DEVICE_ICON[ds.device]}
                 <span className="capitalize">{ds.device}</span>
-                <span className="font-bold">{ds.status === "good" ? "✓" : ds.status === "needs_fix" ? "!" : "✕"}</span>
+                <span className="font-semibold">{ds.status === "good" ? "Good" : ds.status === "needs_fix" ? "Fix" : "Broken"}</span>
               </span>
             ))}
           </div>
@@ -85,3 +85,4 @@ export default function StatusBanner({ verdict, verdictLabel, verdictDetail, sco
     </div>
   );
 }
+

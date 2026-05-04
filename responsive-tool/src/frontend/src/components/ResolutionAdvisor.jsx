@@ -20,7 +20,7 @@ const CATEGORY_ICON = {
 
 export default function ResolutionAdvisor({ advice }) {
   if (!advice?.length) return (
-    <div className="glass rounded-2xl border border-surface-border p-5 shadow-glass">
+    <div className="panel p-5">
       <h3 className="mb-3 text-sm font-semibold text-surface-body">Recommended Fixes</h3>
       <p className="text-xs text-surface-muted">No resolution advice available.</p>
     </div>
@@ -30,17 +30,17 @@ export default function ResolutionAdvisor({ advice }) {
   const suggestions = advice.filter((a) => !a.viewport);
 
   return (
-    <div className="glass rounded-2xl border border-surface-border p-5 shadow-glass">
+    <div className="panel p-5">
       <h3 className="mb-4 text-sm font-semibold text-surface-body">Recommended Fixes</h3>
 
       {suggestions.length > 0 && (
         <div className="mb-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-surface-muted">
+          <p className="section-label mb-2">
             General Suggestions
           </p>
           <div className="flex flex-col gap-1.5">
             {suggestions.map((item, i) => (
-              <div key={i} className="flex gap-3 rounded-xl border border-surface-border bg-white p-3 shadow-sm">
+              <div key={i} className="flex gap-3 rounded-lg border border-surface-border bg-white p-3 shadow-sm">
                 <span className="mt-0.5 shrink-0 text-surface-muted">
                   {CATEGORY_ICON[item.category] || <FiAlertCircle size={14} />}
                 </span>
@@ -56,18 +56,18 @@ export default function ResolutionAdvisor({ advice }) {
 
       {breakpoints.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-surface-muted">
+          <p className="section-label mb-2">
             Breakpoint Fixes
           </p>
           <div className="flex flex-col gap-1.5">
             {breakpoints.map((item, i) => {
               const cfg = PRIORITY[item.priority] || PRIORITY.low;
               return (
-                <div key={i} className={`rounded-xl border-l-2 p-3 ${cfg.style}`}>
+                <div key={i} className={`rounded-lg border-l-2 p-3 ${cfg.style}`}>
                   <div className="mb-1.5 flex flex-wrap items-center gap-2">
                     <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
                     <span className="text-xs font-semibold text-surface-body">
-                      {DEVICE_LABEL[item.device]} — {item.viewport}
+                      {DEVICE_LABEL[item.device]} - {item.viewport}
                     </span>
                     <span className={`ml-auto rounded-full border px-2 py-0.5 text-xs font-medium ${cfg.badge}`}>
                       {item.priority === "high" ? "High" : item.priority === "medium" ? "Medium" : "Low"} Priority
@@ -88,3 +88,4 @@ export default function ResolutionAdvisor({ advice }) {
     </div>
   );
 }
+

@@ -2,26 +2,17 @@ import { Link, useLocation } from "react-router-dom";
 import { HiOutlineBolt } from "react-icons/hi2";
 
 const links = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/scanner",   label: "Scanner"   },
+  { to: "/dashboard", label: "Dashboard"        },
+  { to: "/scanner",   label: "Responsive Viewer" },
+  { to: "/history",   label: "History"           },
 ];
 
 export default function Navbar() {
   const { pathname } = useLocation();
 
-  // Add logout handler
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    window.location.href = "/dashboard";
-  };
-
-  // Check if user is logged in
-  const hasToken = !!localStorage.getItem("access_token");
-
   return (
-    <nav className="sticky top-0 z-50 border-b border-surface-border glass w-full">
-      <div className="flex w-full items-center gap-5 px-6" style={{ height: 52 }}>
+    <nav className="sticky top-0 z-50 w-full border-b border-surface-border bg-white/80 backdrop-blur-xl">
+      <div className="flex min-h-[56px] w-full flex-wrap items-center gap-3 px-4 py-2 sm:flex-nowrap sm:px-6">
 
         <Link to="/dashboard" className="flex items-center gap-2 no-underline">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-500 text-white shadow-orange-glow">
@@ -32,9 +23,9 @@ export default function Navbar() {
           </span>
         </Link>
 
-        <span className="h-4 w-px bg-surface-border" />
+        <span className="hidden h-4 w-px bg-surface-border sm:block" />
 
-        <div className="flex items-center gap-0.5">
+        <div className="order-3 flex w-full items-center gap-1 sm:order-none sm:w-auto">
           {links.map(({ to, label }) => {
             const active = pathname.startsWith(to);
             return (
@@ -42,7 +33,7 @@ export default function Navbar() {
                 className={[
                   "rounded-lg px-3 py-1.5 text-sm font-medium transition-all no-underline",
                   active
-                    ? "bg-accent-500/10 text-accent-600 font-semibold"
+                    ? "bg-accent-500/10 text-accent-600"
                     : "text-surface-label hover:bg-black/5 hover:text-surface-body",
                 ].join(" ")}
               >
@@ -53,17 +44,6 @@ export default function Navbar() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          {hasToken && (
-            <button
-              onClick={handleLogout}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-surface-label hover:bg-black/5 hover:text-surface-body transition-all"
-            >
-              Logout
-            </button>
-          )}
-          <span className="rounded-full border border-accent-200 bg-accent-50 px-2.5 py-0.5 text-xs font-medium text-accent-600">
-            Beta
-          </span>
         </div>
       </div>
     </nav>

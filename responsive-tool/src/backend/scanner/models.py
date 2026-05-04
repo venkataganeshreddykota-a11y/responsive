@@ -1,9 +1,7 @@
 from django.db import models
-from users.models import User
 
 
 class ScanURL(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="scan_urls", null=True, blank=True)
     url = models.URLField(max_length=2048)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -11,8 +9,7 @@ class ScanURL(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        user_label = self.user.email if self.user else "anonymous"
-        return f"{user_label} — {self.url}"
+        return self.url
 
 
 class ScanReport(models.Model):

@@ -3,6 +3,7 @@ import json
 import re
 import requests
 from urllib.parse import urljoin, urlparse, quote
+from http.cookies import SimpleCookie
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -21,7 +22,11 @@ class ScanURLViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        reports_qs = ScanReport.objects.order_by("id")
+        reports_qs = (
+            ScanReport.objects
+            .defer("screenshots", "suggestions", "device_results", "raw_result")
+            .order_by("id")
+        )
         return ScanURL.objects.all().prefetch_related(
             Prefetch("reports", queryset=reports_qs)
         )
@@ -79,6 +84,34 @@ PROXY_TIMEOUT = 30
 def _proxy_url(target_url):
     """Return the local proxy path for a given absolute URL."""
     return f"/api/scanner/proxy/?url={quote(target_url, safe='')}"
+
+
+def _copy_rewritten_cookies(source_response, proxy_response):
+    """Copy target cookies as host-only proxy cookies so session flows work in Live View."""
+    try:
+        cookie_headers = source_response.raw.headers.get_all('Set-Cookie')
+    except AttributeError:
+        cookie_header = source_response.headers.get('Set-Cookie')
+        cookie_headers = [cookie_header] if cookie_header else []
+
+    for header in cookie_headers or []:
+        cookie = SimpleCookie()
+        try:
+            cookie.load(header)
+        except Exception:
+            continue
+
+        for name, morsel in cookie.items():
+            proxy_response.set_cookie(
+                key=name,
+                value=morsel.value,
+                max_age=morsel['max-age'] or None,
+                expires=morsel['expires'] or None,
+                path='/',
+                secure=False,
+                httponly=bool(morsel['httponly']),
+                samesite='Lax',
+            )
 
 
 def _rewrite_html(html, base_url):
@@ -398,7 +431,7 @@ if ('serviceWorker' in navigator) {{
     return html
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
 @permission_classes([permissions.AllowAny])
 def iframe_proxy(request):
     target_url = request.GET.get('url', '').strip()
@@ -409,16 +442,44 @@ def iframe_proxy(request):
 
     logger.info(f"Proxy request for: {target_url}")
 
+    if request.method == 'OPTIONS':
+        response = HttpResponse(status=204)
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        response['Access-Control-Allow-Headers'] = request.headers.get(
+            'Access-Control-Request-Headers',
+            'Content-Type, Authorization, X-Requested-With',
+        )
+        response['Access-Control-Max-Age'] = '86400'
+        return response
+
+    request_headers = {
+        'User-Agent': request.headers.get(
+            'User-Agent',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+        ),
+        'Accept': request.headers.get(
+            'Accept',
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ),
+        'Accept-Language': request.headers.get('Accept-Language', 'en-US,en;q=0.9'),
+        'Accept-Encoding': 'gzip, deflate',
+        'Referer': target_url,
+        'Origin': f"{urlparse(target_url).scheme}://{urlparse(target_url).netloc}",
+    }
+    if request.content_type:
+        request_headers['Content-Type'] = request.content_type
+    if request.headers.get('Authorization'):
+        request_headers['Authorization'] = request.headers['Authorization']
+    if request.headers.get('Cookie'):
+        request_headers['Cookie'] = request.headers['Cookie']
+
     try:
-        resp = requests.get(
+        resp = requests.request(
+            request.method,
             target_url,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate',
-                'Referer': target_url,
-            },
+            headers=request_headers,
+            data=request.body if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} else None,
             timeout=PROXY_TIMEOUT,
             allow_redirects=True,
             verify=True,
@@ -472,7 +533,7 @@ def iframe_proxy(request):
         # Rewrite all asset/link URLs to go back through this proxy
         content = _rewrite_html(content, target_url)
 
-        proxy_response = HttpResponse(content, content_type='text/html; charset=utf-8')
+        proxy_response = HttpResponse(content, content_type='text/html; charset=utf-8', status=resp.status_code)
 
     elif 'text/css' in content_type or 'css' in content_type:
         # Rewrite url() and @import references inside CSS files
@@ -497,7 +558,7 @@ def iframe_proxy(request):
 
         content = re.sub(r'@import\s+(?:url\()?["\']?([^"\')\s]+)["\']?\)?', rewrite_import, content, flags=re.IGNORECASE)
 
-        proxy_response = HttpResponse(content, content_type=content_type)
+        proxy_response = HttpResponse(content, content_type=content_type, status=resp.status_code)
 
     elif 'javascript' in content_type or 'application/json' in content_type or content_type.startswith('text/javascript') or content_type.startswith('application/x-javascript'):
         # Rewrite root-relative asset strings in JS bundles. Vite/SPA bundles often
@@ -513,25 +574,28 @@ def iframe_proxy(request):
                 return f"{quote_char}{_proxy_url(target_origin + '/' + path)}{quote_char}"
 
             content = re.sub(
-                r'(["\'])/(assets/[^"\']+\.(?:js|mjs|css|png|jpe?g|webp|svg|gif|ico|woff2?|ttf|json|mp4|webm|avif))\1',
+                r'(["\'])/((?:facthub/)?assets/[^"\']+\.(?:js|mjs|css|png|jpe?g|webp|svg|gif|ico|woff2?|ttf|json|mp4|webm|avif))\1',
                 rewrite_js_asset,
                 content,
                 flags=re.IGNORECASE,
             )
-            proxy_response = HttpResponse(content, content_type='application/javascript; charset=utf-8')
+
+            proxy_response = HttpResponse(content, content_type='application/javascript; charset=utf-8', status=resp.status_code)
         else:
-            proxy_response = HttpResponse(resp.content, content_type=content_type)
+            proxy_response = HttpResponse(resp.content, content_type=content_type, status=resp.status_code)
         logger.debug(f"Proxying JS/JSON: {target_url[:100]}")
 
     else:
-        proxy_response = HttpResponse(resp.content, content_type=content_type)
+        proxy_response = HttpResponse(resp.content, content_type=content_type, status=resp.status_code)
 
     for key, value in resp.headers.items():
         if key.lower() not in _BLOCKED:
             proxy_response[key] = value
+    _copy_rewritten_cookies(resp, proxy_response)
 
     proxy_response['Access-Control-Allow-Origin'] = '*'
-    proxy_response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    proxy_response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    proxy_response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
     # Explicitly allow framing and disable nosniff for proxied content
     proxy_response['X-Frame-Options'] = 'ALLOWALL'
     proxy_response['X-Content-Type-Options'] = ''

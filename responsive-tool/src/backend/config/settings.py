@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 load_dotenv(BASE_DIR.parent.parent / ".env")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
@@ -19,10 +19,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # third-party
     "rest_framework",
-    "rest_framework_simplejwt",
     "corsheaders",
     # local
-    "users",
     "scanner",
 ]
 
@@ -73,7 +71,6 @@ DATABASES = {
     }
 }
 
-AUTH_USER_MODEL = "users.User"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -93,17 +90,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
+        "rest_framework.permissions.AllowAny",
     ),
-}
-
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
 CORS_ALLOWED_ORIGINS = [

@@ -40,6 +40,7 @@ def _run(report_id: int, url: str):
     from .analyzer import analyze
     from .playwright_engine import run_playwright_scan
     from .result_processor import process as process_results
+    from .result_processor import actionable_issues
 
     try:
         ScanReport.objects.filter(pk=report_id).update(status="running")
@@ -52,7 +53,8 @@ def _run(report_id: int, url: str):
 
         merged_issues      = _dedupe_issues(static["issues"] + pw_result["issues"])
         merged_suggestions = _dedupe_suggestions(static["suggestions"] + pw_result["suggestions"])
-        score = _compute_score(merged_issues)
+        display_issues = actionable_issues(merged_issues, pw_result["device_results"])
+        score = _compute_score(display_issues)
 
         processed = process_results(
             score=score,

@@ -4,7 +4,7 @@ from .models import ScanURL, ScanReport
 
 @admin.register(ScanURL)
 class ScanURLAdmin(admin.ModelAdmin):
-    list_display = ("url", "user", "created_at")
+    list_display = ("url", "created_at")
 
 
 @admin.register(ScanReport)

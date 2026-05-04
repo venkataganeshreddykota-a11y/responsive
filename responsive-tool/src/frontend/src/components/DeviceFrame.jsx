@@ -4,6 +4,9 @@ import { FiAlertTriangle, FiLock, FiRefreshCw } from "react-icons/fi";
 const PROXY_BASE =
   process.env.REACT_APP_PROXY_BASE || "/api/scanner/proxy/?url=";
 
+const WHEEL_DELTA_LINE_HEIGHT = 16;
+const WHEEL_DELTA_PAGE_FACTOR = 0.85;
+
 function getYouTubeEmbedUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
@@ -43,7 +46,6 @@ export default function DeviceFrame({
   status,
   variant,
   reloadToken,
-  scrollCommand,
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -80,28 +82,6 @@ export default function DeviceFrame({
   }, [reload, reloadToken]);
 
   useEffect(() => {
-    if (!scrollCommand || loading || error) return;
-
-    try {
-      const frameWindow = iframeRef.current?.contentWindow;
-      const doc = iframeRef.current?.contentDocument;
-      const root = doc?.scrollingElement || doc?.documentElement || doc?.body;
-      if (!frameWindow || !root) return;
-
-      const maxScroll = Math.max(0, root.scrollHeight - frameWindow.innerHeight);
-      const top = {
-        top: 0,
-        middle: maxScroll / 2,
-        bottom: maxScroll,
-      }[scrollCommand.position] ?? 0;
-
-      frameWindow.scrollTo({ top, behavior: "smooth" });
-    } catch (_) {
-      // Some pages can become inaccessible after navigation.
-    }
-  }, [error, loading, scrollCommand]);
-
-  useEffect(() => {
     if (!onScrollSync || !deviceKey || loading || error) return undefined;
 
     let frameWindow;
@@ -122,7 +102,7 @@ export default function DeviceFrame({
         ticking = false;
         const metrics = getMetrics();
         if (!metrics || metrics.maxScroll <= 0) return;
-        onScrollSync(deviceKey, metrics.root.scrollTop / metrics.maxScroll);
+        onScrollSync(deviceKey, frameWindow.scrollY / metrics.maxScroll);
       });
     };
 
@@ -144,6 +124,70 @@ export default function DeviceFrame({
   }, [deviceKey, error, loading, onScrollSync]);
 
   useEffect(() => {
+    if (!onScrollSync || !deviceKey || loading || error) return undefined;
+
+    let frameWindow;
+    let doc;
+
+    const getRoot = () => doc?.scrollingElement || doc?.documentElement || doc?.body;
+    const publishScroll = () => {
+      const root = getRoot();
+      if (!root || !frameWindow) return;
+      const maxScroll = Math.max(0, root.scrollHeight - frameWindow.innerHeight);
+      if (maxScroll <= 0) return;
+      onScrollSync(deviceKey, frameWindow.scrollY / maxScroll);
+    };
+
+    const handleWheel = (event) => {
+      if (applyingSyncRef.current) return;
+
+      const horizontalDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) || event.shiftKey;
+      if (horizontalDelta) {
+        const strip = iframeRef.current?.closest("[data-live-view-scroll]");
+        if (strip) {
+          event.preventDefault();
+          strip.scrollLeft += event.deltaX || event.deltaY;
+        }
+        return;
+      }
+
+      const root = getRoot();
+      if (!root || !frameWindow) return;
+
+      const maxScroll = Math.max(0, root.scrollHeight - frameWindow.innerHeight);
+      if (maxScroll <= 0) return;
+
+      event.preventDefault();
+      const deltaMultiplier =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? WHEEL_DELTA_LINE_HEIGHT
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? frameWindow.innerHeight * WHEEL_DELTA_PAGE_FACTOR
+            : 1;
+      const nextTop = Math.max(0, Math.min(maxScroll, frameWindow.scrollY + event.deltaY * deltaMultiplier));
+      frameWindow.scrollTo({ top: nextTop, left: frameWindow.scrollX, behavior: "auto" });
+      frameWindow.requestAnimationFrame(publishScroll);
+    };
+
+    try {
+      frameWindow = iframeRef.current?.contentWindow;
+      doc = iframeRef.current?.contentDocument;
+      if (!frameWindow || !doc) return undefined;
+      doc.addEventListener("wheel", handleWheel, { passive: false });
+    } catch (_) {
+      return undefined;
+    }
+
+    return () => {
+      try {
+        doc?.removeEventListener("wheel", handleWheel);
+      } catch (_) {
+        // Ignore pages that become inaccessible after navigation.
+      }
+    };
+  }, [deviceKey, error, loading, onScrollSync]);
+
+  useEffect(() => {
     if (!deviceKey || syncSource === deviceKey || syncRatio == null || loading || error) return;
 
     try {
@@ -154,7 +198,7 @@ export default function DeviceFrame({
 
       const maxScroll = Math.max(0, root.scrollHeight - frameWindow.innerHeight);
       applyingSyncRef.current = true;
-      frameWindow.scrollTo({ top: maxScroll * syncRatio, behavior: "auto" });
+      frameWindow.scrollTo({ top: maxScroll * syncRatio, left: frameWindow.scrollX, behavior: "auto" });
       window.setTimeout(() => {
         applyingSyncRef.current = false;
       }, 80);
@@ -218,12 +262,12 @@ export default function DeviceFrame({
 
   if (variant === "workspace") {
     return (
-      <div className="bg-[#dfe8f3]" style={{ width: wrapperWidth }}>
+      <div className="bg-surface-border" style={{ width: wrapperWidth }}>
         <div className="mb-1 h-3 overflow-x-auto overflow-y-hidden bg-white scrollbar-thin">
           <div style={{ width: Math.max(wrapperWidth, width * 0.22), height: 1 }} />
         </div>
         <div
-          className="relative overflow-hidden bg-white shadow-sm"
+          className="relative overflow-hidden overscroll-contain bg-white shadow-sm"
           style={{ width: wrapperWidth, height: wrapperHeight }}
         >
           {preview}
@@ -253,7 +297,7 @@ export default function DeviceFrame({
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border-2 bg-white shadow-xl ${frameColor}`}
+      className={`overflow-hidden rounded-lg border-2 bg-white shadow-xl ${frameColor}`}
       style={{ width: wrapperWidth, height: wrapperHeight + 38 }}
     >
       <div className="flex h-[38px] items-center gap-2 border-b border-surface-border bg-white px-3">

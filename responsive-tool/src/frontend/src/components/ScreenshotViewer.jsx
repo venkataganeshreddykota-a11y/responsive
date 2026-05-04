@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { FiSmartphone, FiTablet, FiMonitor, FiMaximize2, FiX, FiLock } from "react-icons/fi";
 import { MdLaptop } from "react-icons/md";
@@ -124,7 +124,7 @@ function Lightbox({ device, src, onClose }) {
       {/* header */}
       <div className="flex w-full max-w-sm items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-semibold text-white">
-          <FiSmartphone size={14} /> {d.label} — {d.width}px
+          <FiSmartphone size={14} /> {d.label} - {d.width}px
         </span>
         <button
           onClick={onClose}
@@ -134,7 +134,7 @@ function Lightbox({ device, src, onClose }) {
         </button>
       </div>
 
-      {/* phone shell — fixed 390px wide, scrollable screen */}
+      {/* phone shell - fixed 390px wide, scrollable screen */}
       <div
         className="flex flex-col overflow-hidden rounded-[40px] border-[5px] border-stone-300 bg-white shadow-2xl"
         style={{ width: 390 }}
@@ -143,7 +143,7 @@ function Lightbox({ device, src, onClose }) {
         <div className="flex shrink-0 items-center justify-center bg-stone-100" style={{ height: 32 }}>
           <span className="h-2.5 w-2.5 rounded-full bg-stone-400" />
         </div>
-        {/* scrollable screen area — max 70vh */}
+        {/* scrollable screen area - max 70vh */}
         <div
           className="overflow-y-auto scrollbar-thin bg-white"
           style={{ maxHeight: "calc(100vh - 180px)" }}
@@ -159,12 +159,12 @@ function Lightbox({ device, src, onClose }) {
   ) : (
     /* Desktop / tablet / laptop: wide panel */
     <div
-      className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-surface-border bg-white shadow-2xl"
+      className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-surface-border bg-white shadow-2xl"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-surface-border px-5 py-3">
         <span className="flex items-center gap-2 text-sm font-semibold text-surface-body">
-          <d.Icon size={15} /> {d.label} — {d.width}px
+          <d.Icon size={15} /> {d.label} - {d.width}px
         </span>
         <button
           onClick={onClose}
@@ -197,46 +197,120 @@ function Lightbox({ device, src, onClose }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading, activeUrl }) {
-  const [lightbox, setLightbox] = useState(null);
-  const [viewMode, setViewMode] = useState("screenshots"); // "screenshots" | "live"
+  const [lightbox, setLightbox]         = useState(null);
+  const [viewMode, setViewMode]         = useState("screenshots");
+  const [selectedDevices, setSelected]  = useState(() => DEVICES.map(d => d.key));
+  const [deviceMenuOpen, setDeviceMenu] = useState(false);
+  const deviceMenuRef = useRef(null);
+
   const statusMap = Object.fromEntries((deviceStatus || []).map((d) => [d.device, d]));
   const lightboxDevice = lightbox ? DEVICES.find((x) => x.key === lightbox) : null;
 
+  useEffect(() => {
+    const handler = (e) => {
+      if (deviceMenuRef.current && !deviceMenuRef.current.contains(e.target))
+        setDeviceMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const toggleDevice = (key) => {
+    setSelected(prev =>
+      prev.includes(key)
+        ? prev.length > 1 ? prev.filter(k => k !== key) : prev
+        : [...prev, key]
+    );
+  };
+
+  const visibleDevices = DEVICES.filter(d => selectedDevices.includes(d.key));
+
   return (
     <>
-      {/* Mode toggle */}
-      <div className="mb-3 flex gap-1 rounded-xl border border-surface-border bg-white/60 p-1 w-fit">
-        <button
-          onClick={() => setViewMode("screenshots")}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            viewMode === "screenshots"
-              ? "bg-accent-500 text-white shadow-sm"
-              : "text-surface-muted hover:text-surface-body"
-          }`}
-        >
-          <HiOutlineCamera size={13} />
-          Screenshots
-        </button>
-        <button
-          onClick={() => setViewMode("live")}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            viewMode === "live"
-              ? "bg-accent-500 text-white shadow-sm"
-              : "text-surface-muted hover:text-surface-body"
-          }`}
-        >
-          <TbLiveView size={13} />
-          Live View
-        </button>
+      {/* Mode toggle + device selector row */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex w-fit gap-1 rounded-lg border border-surface-border bg-white/60 p-1">
+          <button
+            onClick={() => setViewMode("screenshots")}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "screenshots"
+                ? "bg-accent-500 text-white shadow-sm"
+                : "text-surface-muted hover:text-surface-body"
+            }`}
+          >
+            <HiOutlineCamera size={13} />
+            Screenshots
+          </button>
+          <button
+            onClick={() => setViewMode("live")}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === "live"
+                ? "bg-accent-500 text-white shadow-sm"
+                : "text-surface-muted hover:text-surface-body"
+            }`}
+          >
+            <TbLiveView size={13} />
+            Live View
+          </button>
+        </div>
+
+        {/* Select Devices dropdown */}
+        <div className="relative" ref={deviceMenuRef}>
+          <button
+            onClick={() => setDeviceMenu(o => !o)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              deviceMenuOpen
+                ? "border-accent-400 bg-accent-50 text-accent-600"
+                : "border-surface-border bg-white text-surface-label hover:text-surface-body"
+            }`}
+          >
+            <FiMonitor size={12} />
+            Select Devices
+            <span className="ml-0.5 rounded-full bg-accent-100 px-1.5 py-0.5 text-[10px] font-bold text-accent-600">
+              {selectedDevices.length}
+            </span>
+          </button>
+
+          {deviceMenuOpen && (
+            <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-48 overflow-hidden rounded-lg border border-surface-border bg-white shadow-glass-hover">
+              <p className="border-b border-surface-border px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-surface-muted">
+                Visible Devices
+              </p>
+              {DEVICES.map(({ key, label, width, Icon }) => {
+                const active = selectedDevices.includes(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleDevice(key)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors hover:bg-stone-50"
+                  >
+                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                      active ? "border-accent-500 bg-accent-500" : "border-stone-300 bg-white"
+                    }`}>
+                      {active && (
+                        <svg viewBox="0 0 10 8" className="h-2.5 w-2.5 fill-none stroke-white stroke-2">
+                          <polyline points="1,4 4,7 9,1" />
+                        </svg>
+                      )}
+                    </span>
+                    <Icon size={12} className="shrink-0 text-surface-muted" />
+                    <span className={active ? "text-surface-body" : "text-surface-muted"}>{label}</span>
+                    <span className="ml-auto text-[10px] text-stone-400">{width}px</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {viewMode === "live" ? (
         <LiveViewPanel url={activeUrl} deviceStatus={deviceStatus} screenshots={screenshots} />
       ) : (
-        <div className="glass rounded-2xl border border-surface-border shadow-glass">
+        <div className="panel">
           <div className="overflow-x-auto scrollbar-thin p-5 pb-4">
             <div className="flex gap-6 items-end" style={{ minWidth: "max-content" }}>
-              {DEVICES.map(({ key, label, width, Icon, frameW, screenH, isPhone }) => {
+              {visibleDevices.map(({ key, label, width, Icon, frameW, screenH, isPhone }) => {
                 const src = screenshots?.[key];
                 const ds  = statusMap[key];
                 const statusCfg = ds ? STATUS_STYLE[ds.status] : null;
@@ -273,9 +347,6 @@ export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading,
                         {ds.probes?.overflow_count > 0 && (
                           <span className="text-xs text-stone-400">{ds.probes.overflow_count} overflow</span>
                         )}
-                        {ds.probes?.small_targets > 0 && (
-                          <span className="text-xs text-stone-400">{ds.probes.small_targets} small targets</span>
-                        )}
                       </div>
                     )}
                   </div>
@@ -286,7 +357,6 @@ export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading,
         </div>
       )}
 
-      {/* Portal lightbox — always renders at document.body level */}
       {lightbox && screenshots?.[lightbox] && lightboxDevice && (
         <Lightbox
           device={lightboxDevice}
@@ -297,3 +367,5 @@ export default function ScreenshotViewer({ screenshots, deviceStatus, isLoading,
     </>
   );
 }
+
+
