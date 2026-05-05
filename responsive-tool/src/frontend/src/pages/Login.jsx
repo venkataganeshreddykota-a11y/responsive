@@ -7,6 +7,7 @@ import { TbWorld } from "react-icons/tb";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 import DeviceFrame from "../components/DeviceFrame";
+import { loadJsonArray, saveJson } from "../utils/storage";
 
 const VERDICT_CFG = {
   good:      { icon: HiOutlineCheckCircle,        color: "text-emerald-500", bg: "bg-emerald-50 border-emerald-200",  label: "Good"      },
@@ -24,20 +25,11 @@ const DEVICE_ICONS = {
 const DASHBOARD_CACHE_KEY = "rt_dashboard_urls";
 
 function loadCachedDashboardUrls() {
-  try {
-    const cached = JSON.parse(localStorage.getItem(DASHBOARD_CACHE_KEY) || "[]");
-    return Array.isArray(cached) ? cached : [];
-  } catch {
-    return [];
-  }
+  return loadJsonArray(DASHBOARD_CACHE_KEY).filter((item) => item && Array.isArray(item.reports));
 }
 
 function saveCachedDashboardUrls(data) {
-  try {
-    localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(data));
-  } catch {
-    // Ignore storage quota or privacy-mode failures; live data still renders.
-  }
+  if (Array.isArray(data)) saveJson(DASHBOARD_CACHE_KEY, data);
 }
 
 function StatCard({ label, value, sub, accent }) {
@@ -191,8 +183,9 @@ export default function Dashboard() {
 
     api.get("/scanner/urls/", { signal: controller.signal })
       .then(({ data }) => {
-        setUrls(data);
-        saveCachedDashboardUrls(data);
+        const nextUrls = Array.isArray(data) ? data : [];
+        setUrls(nextUrls);
+        saveCachedDashboardUrls(nextUrls);
         setError(null);
       })
       .catch((err) => {

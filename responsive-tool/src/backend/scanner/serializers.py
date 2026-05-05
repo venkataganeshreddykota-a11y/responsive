@@ -89,16 +89,27 @@ class ScanReportListSerializer(serializers.ModelSerializer):
 class ScanURLSerializer(serializers.ModelSerializer):
     reports       = ScanReportListSerializer(many=True, read_only=True)
     latest_report = serializers.SerializerMethodField()
+    latest_activity_at = serializers.SerializerMethodField()
+    report_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ScanURL
-        fields = ("id", "url", "created_at", "reports", "latest_report")
-        read_only_fields = ("id", "created_at", "reports", "latest_report")
+        fields = ("id", "url", "created_at", "latest_activity_at", "report_count", "reports", "latest_report")
+        read_only_fields = fields
 
     def get_latest_report(self, obj):
         reports = list(obj.reports.all())
-        report = reports[-1] if reports else None
+        report = max(reports, key=lambda r: r.created_at, default=None)
         return ScanReportListSerializer(report).data if report else None
+
+    def get_latest_activity_at(self, obj):
+        reports = list(obj.reports.all())
+        report = max(reports, key=lambda r: r.created_at, default=None)
+        return report.created_at if report else obj.created_at
+
+    def get_report_count(self, obj):
+        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("reports")
+        return len(prefetched) if prefetched is not None else obj.reports.count()
 
     def create(self, validated_data):
         return super().create(validated_data)

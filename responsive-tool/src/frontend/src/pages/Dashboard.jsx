@@ -9,18 +9,16 @@ import {
 import { TbWorld } from "react-icons/tb";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
+import { loadJsonArray, saveJson } from "../utils/storage";
 
 const DASHBOARD_CACHE_KEY = "rt_dashboard_urls";
 
 function loadCached() {
-  try {
-    const c = JSON.parse(localStorage.getItem(DASHBOARD_CACHE_KEY) || "[]");
-    return Array.isArray(c) ? c : [];
-  } catch { return []; }
+  return loadJsonArray(DASHBOARD_CACHE_KEY).filter((item) => item && Array.isArray(item.reports));
 }
 
 function saveCache(data) {
-  try { localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(data)); } catch {}
+  if (Array.isArray(data)) saveJson(DASHBOARD_CACHE_KEY, data);
 }
 
 function StatCard({ label, value, sub, accent, icon: Icon, to }) {
@@ -56,7 +54,12 @@ export default function Dashboard() {
     const controller = new AbortController();
     if (urls.length === 0) setLoading(true);
     api.get("/scanner/urls/", { signal: controller.signal })
-      .then(({ data }) => { setUrls(data); saveCache(data); setError(null); })
+      .then(({ data }) => {
+        const nextUrls = Array.isArray(data) ? data : [];
+        setUrls(nextUrls);
+        saveCache(nextUrls);
+        setError(null);
+      })
       .catch((err) => {
         if (err.name !== "CanceledError" && err.name !== "AbortError")
           setError("network");

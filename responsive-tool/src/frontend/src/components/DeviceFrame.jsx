@@ -53,7 +53,13 @@ export default function DeviceFrame({
   const applyingSyncRef = useRef(false);
 
   const embedUrl = getYouTubeEmbedUrl(url);
-  const frameUrl = embedUrl || `${PROXY_BASE}${encodeURIComponent(url)}`;
+  const isMobile = width <= 480;
+  const deviceQuery = new URLSearchParams({
+    rt_width: String(width),
+    rt_height: String(height),
+    rt_mobile: isMobile ? "1" : "0",
+  }).toString();
+  const frameUrl = embedUrl || `${PROXY_BASE}${encodeURIComponent(url)}&${deviceQuery}`;
   const displayHost = (() => {
     try {
       return new URL(url).host;
@@ -61,7 +67,6 @@ export default function DeviceFrame({
       return "preview";
     }
   })();
-  const isMobile = deviceKey === "mobile";
   const wrapperWidth = width * scale;
   const wrapperHeight = height * scale;
   const frameColor = {
@@ -209,7 +214,13 @@ export default function DeviceFrame({
 
   const preview = (
     <>
-      {loading && !error && <div className="absolute inset-0 z-10 shimmer" />}
+      {loading && !error && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center shimmer">
+          <span className="rounded-full border border-white/70 bg-white/85 px-3 py-1 text-[11px] font-semibold text-surface-label shadow-sm">
+            Loading Live View...
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-stone-50 text-surface-muted">

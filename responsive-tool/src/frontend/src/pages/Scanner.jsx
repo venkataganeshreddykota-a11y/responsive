@@ -7,6 +7,7 @@ import Navbar from "../components/Navbar";
 import StatusBanner from "../components/StatusBanner";
 import ScreenshotViewer from "../components/ScreenshotViewer";
 import DeviceReport from "../components/DeviceReport";
+import { loadJsonArray, saveJson } from "../utils/storage";
 
 const POLL_INTERVAL  = 2500;
 const POLL_MAX       = 48;
@@ -14,11 +15,11 @@ const HISTORY_KEY    = "rt_url_history";
 const HISTORY_LIMIT  = 10;
 
 const STEPS = [
-  { key: "pending",  label: "Queued",               pct: 5  },
-  { key: "running",  label: "Fetching page",         pct: 20 },
-  { key: "running2", label: "Static analysis",       pct: 45 },
-  { key: "running3", label: "Capturing screenshots", pct: 70 },
-  { key: "running4", label: "Detecting issues",      pct: 90 },
+  { key: "pending",  label: "Live view queued",      pct: 5  },
+  { key: "running",  label: "Opening live page",     pct: 20 },
+  { key: "running2", label: "Preparing devices",     pct: 45 },
+  { key: "running3", label: "Loading live previews", pct: 70 },
+  { key: "running4", label: "Checking live layout",  pct: 90 },
 ];
 
 function SkeletonPanel({ h = "h-48" }) {
@@ -27,12 +28,11 @@ function SkeletonPanel({ h = "h-48" }) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
-  catch { return []; }
+  return loadJsonArray(HISTORY_KEY).filter((value) => typeof value === "string");
 }
 
 function saveHistory(list) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+  saveJson(HISTORY_KEY, list);
 }
 
 function pushHistory(url, list) {
@@ -169,9 +169,12 @@ export default function Scanner() {
   const [stepIdx, setStepIdx]     = useState(0);
   const [result, setResult]       = useState(null);
   const [error, setError]         = useState("");
+  const [activeLiveDevice, setActiveLiveDevice] = useState(null);
+  const [issueDetailsOpen, setIssueDetailsOpen] = useState(false);
   const pollRef    = useRef(null);
   const stepTimer  = useRef(null);
   const urlInputRef = useRef(null);
+  const issuesSectionRef = useRef(null);
 
   useEffect(() => () => stopAll(), []);
 
@@ -204,7 +207,7 @@ export default function Scanner() {
 
   const handleScan = async (e) => {
     e.preventDefault();
-    stopAll(); setError(""); setResult(null);
+    stopAll(); setError(""); setResult(null); setActiveLiveDevice(null); setIssueDetailsOpen(false);
     const trimmed = url.trim();
     setLoading(true); setActiveUrl(trimmed); startStepTimer();
     // push to history
@@ -216,6 +219,23 @@ export default function Scanner() {
       stopAll(); setError(err.response?.data?.url?.[0] || "Failed to start scan."); setLoading(false);
     }
   };
+
+  const scrollToIssues = useCallback(() => {
+    window.setTimeout(() => {
+      issuesSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  }, []);
+
+  const toggleIssueDetails = useCallback(() => {
+    setIssueDetailsOpen((open) => {
+      const next = !open;
+      if (next) scrollToIssues();
+      return next;
+    });
+  }, [scrollToIssues]);
 
   const step = STEPS[stepIdx];
 
@@ -318,17 +338,23 @@ export default function Scanner() {
 
             <div className="px-4 pt-5 sm:px-6">
               <p className="section-label mb-2">
-                Screenshots by Device
+                Live View by Device
               </p>
               <ScreenshotViewer
                 screenshots={result?.screenshots}
                 deviceStatus={result?.device_status}
+                issues={result?.issues}
+                issueGroups={result?.issue_groups}
+                advice={result?.resolution_advice}
                 isLoading={loading}
                 activeUrl={activeUrl}
+                onLiveDeviceChange={setActiveLiveDevice}
+                issueDetailsOpen={issueDetailsOpen}
+                onToggleIssueDetails={toggleIssueDetails}
               />
             </div>
 
-            <div className="px-4 py-5 sm:px-6">
+            <div ref={issuesSectionRef} className="scroll-mt-4 px-4 py-5 sm:px-6">
               {result && (
                 <>
                   <p className="section-label mb-3">
@@ -339,6 +365,9 @@ export default function Scanner() {
                     issueGroups={result.issue_groups}
                     advice={result.resolution_advice}
                     deviceStatus={result.device_status}
+                    selectedDevice={activeLiveDevice}
+                    detailsExpanded={issueDetailsOpen}
+                    onToggleDetails={toggleIssueDetails}
                   />
                 </>
               )}

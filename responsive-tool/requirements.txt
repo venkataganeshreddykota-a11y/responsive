@@ -11,3 +11,4 @@ cssutils>=2.7
 playwright>=1.44
 google-api-python-client>=2.120.0
 google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0

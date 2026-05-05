@@ -12,6 +12,8 @@ import { TbWorld } from "react-icons/tb";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 
+const REFRESH_INTERVAL = 5000;
+
 const VERDICT_CFG = {
   good:      { icon: HiOutlineCheckCircle,         color: "text-emerald-500", bg: "bg-emerald-50 border-emerald-200", label: "Good"      },
   needs_fix: { icon: HiOutlineExclamationTriangle,  color: "text-amber-500",  bg: "bg-amber-50 border-amber-200",    label: "Needs Fix" },
@@ -40,6 +42,8 @@ function ScoreBadge({ score }) {
 
 function HistoryRow({ item }) {
   const latest = item.latest_report;
+  const reportCount = item.report_count ?? item.reports?.length ?? 0;
+  const activityAt = item.latest_activity_at || latest?.created_at || item.created_at;
   const verdict = latest?.verdict;
   const vcfg = VERDICT_CFG[verdict] || null;
   const VIcon = vcfg?.icon;
@@ -55,9 +59,9 @@ function HistoryRow({ item }) {
         <p className="truncate text-sm font-medium text-surface-body">{item.url}</p>
         <p className="mt-0.5 flex items-center gap-1 text-[11px] text-surface-muted">
           <HiOutlineClock size={11} />
-          {new Date(item.created_at).toLocaleString()}
+          {new Date(activityAt).toLocaleString()}
           <span className="mx-1 text-surface-border">·</span>
-          {item.reports.length} report{item.reports.length !== 1 ? "s" : ""}
+          {reportCount} report{reportCount !== 1 ? "s" : ""}
         </p>
       </div>
 
@@ -85,24 +89,45 @@ export default function History() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [search, setSearch]   = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter]   = useState(() => {
     const f = searchParams.get("filter");
     return ["all", "completed", "failed"].includes(f) ? f : "all";
   });
 
-  useEffect(() => {
+  const loadHistory = ({ background = false } = {}) => {
     const controller = new AbortController();
+    if (background) setRefreshing(true);
+    else setLoading(true);
+
     api.get("/scanner/urls/", { signal: controller.signal })
       .then(({ data }) => { setUrls(data); setError(null); })
       .catch((err) => {
         if (err.name !== "CanceledError" && err.name !== "AbortError")
           setError("network");
       })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+
+    return controller;
+  };
+
+  useEffect(() => {
+    const controller = loadHistory();
+    const timer = window.setInterval(() => loadHistory({ background: true }), REFRESH_INTERVAL);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
   }, []);
 
-  const sorted = [...urls].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const sorted = [...urls].sort((a, b) => {
+    const aDate = a.latest_activity_at || a.latest_report?.created_at || a.created_at;
+    const bDate = b.latest_activity_at || b.latest_report?.created_at || b.created_at;
+    return new Date(bDate) - new Date(aDate);
+  });
 
   const filtered = sorted.filter((item) => {
     const matchSearch = item.url.toLowerCase().includes(search.toLowerCase());
@@ -156,6 +181,15 @@ export default function History() {
                 {label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => loadHistory({ background: true })}
+              className="inline-flex items-center gap-1 rounded-lg border border-surface-border bg-white px-3 py-1.5 text-xs font-medium text-surface-label transition hover:text-surface-body"
+              title="Refresh history"
+            >
+              <HiOutlineArrowPath size={13} className={refreshing ? "animate-spin" : ""} />
+              Refresh
+            </button>
           </div>
         </div>
 
