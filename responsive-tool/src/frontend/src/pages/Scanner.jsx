@@ -4,7 +4,6 @@ import { FiSmartphone, FiTablet, FiMonitor, FiClock, FiX } from "react-icons/fi"
 import { MdLaptop } from "react-icons/md";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
-import StatusBanner from "../components/StatusBanner";
 import ScreenshotViewer from "../components/ScreenshotViewer";
 import DeviceReport from "../components/DeviceReport";
 import { loadJsonArray, saveJson } from "../utils/storage";
@@ -216,7 +215,10 @@ export default function Scanner() {
       const { data } = await api.post("/scanner/scan/", { url: trimmed });
       pollStatus(data.report_id);
     } catch (err) {
-      stopAll(); setError(err.response?.data?.url?.[0] || "Failed to start scan."); setLoading(false);
+      const data = err.response?.data;
+      stopAll();
+      setError(data?.url?.[0] || data?.detail || "Failed to start scan.");
+      setLoading(false);
     }
   };
 
@@ -324,19 +326,6 @@ export default function Scanner() {
         ) : (
           <div className="flex flex-1 flex-col overflow-y-auto scrollbar-thin">
             <div className="px-4 pt-5 sm:px-6">
-              {result ? (
-                <StatusBanner
-                  verdict={result.verdict}
-                  verdictLabel={result.verdict_label}
-                  verdictDetail={result.verdict_detail}
-                  score={result.score}
-                  deviceStatus={result.device_status}
-                  url={activeUrl}
-                />
-              ) : <SkeletonPanel h="h-28" />}
-            </div>
-
-            <div className="px-4 pt-5 sm:px-6">
               <p className="section-label mb-2">
                 Live View by Device
               </p>
@@ -383,4 +372,3 @@ export default function Scanner() {
     </div>
   );
 }
-

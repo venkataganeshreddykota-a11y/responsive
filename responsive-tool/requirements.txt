@@ -1,4 +1,6 @@
 Django>=4.2
+channels>=4.1
+daphne>=4.1
 djangorestframework>=3.14
 django-cors-headers>=4.3
 mysqlclient>=2.2

@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { FiSmartphone, FiTablet, FiMonitor, FiMaximize2, FiX, FiLock } from "react-icons/fi";
+import { FiCode, FiSmartphone, FiTablet, FiMonitor, FiMaximize2, FiX, FiLock } from "react-icons/fi";
 import { MdLaptop } from "react-icons/md";
 import { HiOutlineCamera } from "react-icons/hi2";
 import { TbLiveView } from "react-icons/tb";
 import LiveViewPanel from "./LiveViewPanel";
+
+const CodeFixPanel = lazy(() => import("./CodeFixPanel"));
 
 const DEVICES = [
   { key: "mobile",  label: "Mobile",  width: 375,  Icon: FiSmartphone, frameW: 260,  screenH: 500, isPhone: true  },
@@ -136,7 +138,7 @@ function Lightbox({ device, src, onClose }) {
 
       {/* phone shell - fixed 390px wide, scrollable screen */}
       <div
-        className="flex flex-col overflow-hidden rounded-[40px] border-[5px] border-stone-300 bg-white shadow-2xl"
+        className="flex flex-col overflow-hidden rounded-[40px] border-[5px] border-stone-300 bg-white shadow-lg"
         style={{ width: 390 }}
       >
         {/* top notch bar */}
@@ -159,7 +161,7 @@ function Lightbox({ device, src, onClose }) {
   ) : (
     /* Desktop / tablet / laptop: wide panel */
     <div
-      className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-surface-border bg-white shadow-2xl"
+      className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-surface-border bg-white shadow-lg"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-surface-border px-5 py-3">
@@ -210,13 +212,28 @@ export default function ScreenshotViewer({
 }) {
   const [lightbox, setLightbox]         = useState(null);
   const [viewMode, setViewMode]         = useState("live");
+  const [codeFixOpen, setCodeFixOpen]   = useState(false);
+  const [selectedLiveDevice, setSelectedLiveDevice] = useState(null);
 
-  const statusMap = Object.fromEntries((deviceStatus || []).map((d) => [d.device, d]));
+  const statusMap = useMemo(
+    () => Object.fromEntries((deviceStatus || []).map((d) => [d.device, d])),
+    [deviceStatus]
+  );
   const lightboxDevice = lightbox ? DEVICES.find((x) => x.key === lightbox) : null;
 
   useEffect(() => {
     if (activeUrl) setViewMode("live");
   }, [activeUrl, isLoading]);
+
+  const handleLiveDeviceChange = useCallback((device) => {
+    setSelectedLiveDevice(device);
+    onLiveDeviceChange?.(device);
+  }, [onLiveDeviceChange]);
+
+  const openCodeFix = () => {
+    setViewMode("live");
+    setCodeFixOpen(true);
+  };
 
   return (
     <>
@@ -245,6 +262,17 @@ export default function ScreenshotViewer({
             <HiOutlineCamera size={13} />
             Screenshots
           </button>
+          <button
+            onClick={openCodeFix}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              codeFixOpen
+                ? "bg-accent-500 text-white shadow-sm"
+                : "text-surface-muted hover:text-surface-body"
+            }`}
+          >
+            <FiCode size={13} />
+            Code Fix
+          </button>
         </div>
       </div>
 
@@ -257,7 +285,7 @@ export default function ScreenshotViewer({
           issueGroups={issueGroups}
           advice={advice}
           isLoading={isLoading}
-          onActiveDeviceChange={onLiveDeviceChange}
+          onActiveDeviceChange={handleLiveDeviceChange}
           issueDetailsOpen={issueDetailsOpen}
           onToggleIssueDetails={onToggleIssueDetails}
         />
@@ -318,6 +346,20 @@ export default function ScreenshotViewer({
           src={screenshots[lightbox]}
           onClose={() => setLightbox(null)}
         />
+      )}
+
+      {codeFixOpen && (
+        <Suspense fallback={null}>
+          <CodeFixPanel
+            open={codeFixOpen}
+            onClose={() => setCodeFixOpen(false)}
+            url={activeUrl}
+            selectedDevice={selectedLiveDevice}
+            issues={issues}
+            issueGroups={issueGroups}
+            deviceStatus={deviceStatus}
+          />
+        </Suspense>
       )}
     </>
   );

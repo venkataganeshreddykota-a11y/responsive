@@ -11,7 +11,7 @@ export default function Navbar() {
   const { pathname } = useLocation();
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-surface-border bg-white/80 backdrop-blur-xl">
+    <nav className="sticky top-0 z-50 w-full border-b border-surface-border bg-white/95">
       <div className="flex min-h-[56px] w-full flex-wrap items-center gap-3 px-4 py-2 sm:flex-nowrap sm:px-6">
 
         <Link to="/dashboard" className="flex items-center gap-2 no-underline">

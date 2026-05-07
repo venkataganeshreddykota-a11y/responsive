@@ -66,7 +66,7 @@ def trigger_scan(request):
 
     url = serializer.validated_data["url"]
     try:
-        scan_url, _ = ScanURL.objects.get_or_create(url=url, defaults={"user": None})
+        scan_url, _ = ScanURL.objects.get_or_create(url=url)
         report = ScanReport.objects.create(scan_url=scan_url, status="pending")
         tasks.dispatch(report.pk, url)
     except Exception as exc:
@@ -93,6 +93,121 @@ def scan_status(request, report_id):
         return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
     return Response(ScanReportSerializer(report).data)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def ai_code_context(request):
+    url = (request.data.get("url") or "").strip()
+    device = request.data.get("device") or {}
+
+    if not url:
+        return Response({"detail": "url is required."}, status=status.HTTP_400_BAD_REQUEST)
+    if not url.startswith(("http://", "https://")):
+        return Response({"detail": "url must start with http:// or https://"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        from .ai_engine.ai_service import is_sarvam_configured
+        from .ai_engine.html_extractor import extract_from_url
+
+        extracted = extract_from_url(url)
+        return Response({
+            "original_html": extracted.get("html", ""),
+            "original_css": extracted.get("css", ""),
+            "css_sources": extracted.get("css_sources", []),
+            "generated_css": "",
+            "issues": request.data.get("issues") or [],
+            "device_name": device.get("name") or device.get("label") or "",
+            "resolution": f"{device.get('width')}x{device.get('height')}" if device.get("width") and device.get("height") else "",
+            "ai_available": is_sarvam_configured(),
+            "config_warning": "" if is_sarvam_configured() else "SARVAM_API_KEY is not configured. CSS extraction and issue review are available, but AI generation is disabled.",
+        })
+    except Exception as exc:
+        logger.error("ai_code_context error for url=%s: %s", url, exc, exc_info=True)
+        return Response({
+            "detail": "Could not extract HTML/CSS for this URL.",
+            "error": str(exc),
+        }, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def ai_fix(request):
+    url = (request.data.get("url") or "").strip()
+
+    if not url:
+        return Response({"detail": "url is required."}, status=status.HTTP_400_BAD_REQUEST)
+    if not url.startswith(("http://", "https://")):
+        return Response({"detail": "url must start with http:// or https://"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        from .ai_engine import generate_responsive_fix
+        result = generate_responsive_fix({
+            "url": url,
+            "html": request.data.get("html") or "",
+            "css": request.data.get("css") or "",
+            "dom": request.data.get("dom") or {},
+            "issues": request.data.get("issues") or [],
+            "device": request.data.get("device") or {},
+        })
+        return Response(result)
+    except ValueError as exc:
+        message = str(exc)
+        if "SARVAM_API_KEY is not configured" not in message:
+            return Response({
+                "detail": message,
+                "code": "sarvam_generation_failed",
+                "ai_available": True,
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({
+            "detail": message,
+            "code": "sarvam_not_configured",
+            "ai_available": False,
+        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as exc:
+        logger.error("ai_fix error for url=%s: %s", url, exc, exc_info=True)
+        return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.AllowAny])
+def live_device_preview(request):
+    target_url = (request.GET.get("url") or "").strip()
+    if not target_url:
+        return HttpResponse("Missing URL", status=400)
+    if not target_url.startswith(("http://", "https://")):
+        return HttpResponse("Only http/https URLs are supported.", status=400)
+
+    try:
+        width = int(request.GET.get("width") or 390)
+        height = int(request.GET.get("height") or 844)
+    except (TypeError, ValueError):
+        return HttpResponse("width and height must be valid integers.", status=400)
+
+    width = max(240, min(width, 5120))
+    height = max(240, min(height, 5120))
+    device_key = (request.GET.get("device_key") or "").strip()
+    label = (request.GET.get("label") or "").strip()
+
+    try:
+        from .playwright_engine import render_device_screenshot
+
+        image = render_device_screenshot(
+            target_url,
+            device_key=device_key,
+            label=label,
+            width=width,
+            height=height,
+            full_page=True,
+        )
+    except Exception as exc:
+        logger.error("live_device_preview error for url=%s: %s", target_url, exc, exc_info=True)
+        return HttpResponse(f"Playwright preview failed: {exc}", status=502)
+
+    response = HttpResponse(image, content_type="image/png")
+    response["Cache-Control"] = "no-store"
+    response["X-Responsive-Tool-Renderer"] = "playwright"
+    return response
 
 
 PROXY_TIMEOUT = 30
@@ -390,6 +505,8 @@ def _rewrite_html(html, base_url, device_context=None):
     # never escapes the proxy (handles window.location, history API, etc.)
     nav_shim = f"""<script>
 try {{
+  window.__RESPONSIVE_TOOL_PROXY_ACTIVE = true;
+  window.__RESPONSIVE_TOOL_TARGET_ORIGIN = {json.dumps(origin)};
   Object.defineProperty(navigator, 'userAgent', {{ get: function() {{ return {json.dumps(emulated_user_agent)}; }}, configurable: true }});
   Object.defineProperty(navigator, 'appVersion', {{ get: function() {{ return {json.dumps(emulated_user_agent)}; }}, configurable: true }});
   Object.defineProperty(navigator, 'platform', {{ get: function() {{ return {json.dumps(emulated_platform)}; }}, configurable: true }});
@@ -544,7 +661,7 @@ if ('serviceWorker' in navigator) {{
 }})();
 </script>"""
 
-    # Inject shim as early as possible — right after the base tag (or <head> if no base)
+    # Inject shim as early as possible, right after the base tag (or <head> if no base).
     if re.search(r"<base[^>]*>", html, re.IGNORECASE):
         # Inject after the base tag we just added
         html = re.sub(r"(<base[^>]*>)", r"\1" + nav_shim, html, count=1, flags=re.IGNORECASE)
@@ -654,7 +771,7 @@ def iframe_proxy(request):
     if 'text/html' in content_type:
         content = resp.content.decode('utf-8', errors='ignore')
 
-        # Strip SRI integrity and crossorigin attrs — proxy rewrites URLs so hashes won't match
+        # Strip SRI integrity and crossorigin attrs because proxy rewrites URLs so hashes won't match.
         content = re.sub(r'\s+integrity=["\'][^"\']*["\']', '', content, flags=re.IGNORECASE)
         content = re.sub(r'\s+crossorigin=["\'][^"\']*["\']', '', content, flags=re.IGNORECASE)
 
@@ -732,7 +849,7 @@ def iframe_proxy(request):
 
 
 
-# ── Google Drive OAuth endpoints ──────────────────────────────────────────────
+# Google Drive OAuth endpoints
 
 def _build_flow(request):
     """Create an OAuth Flow from env vars."""
@@ -929,7 +1046,7 @@ def gdrive_upload(request):
 @permission_classes([permissions.AllowAny])
 def gdrive_status(request):
     """
-    Check if Drive is ready — either via session or env refresh token.
+    Check if Drive is ready using either session or env refresh token.
     """
     if _GDRIVE_SESSION_KEY in request.session:
         return Response({"connected": True})

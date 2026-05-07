@@ -15,6 +15,15 @@ process.on("uncaughtException", (err) => {
 
 module.exports = function (app) {
   app.use(
+    "/rt-ws",
+    createProxyMiddleware({
+      target: "ws://localhost:8000",
+      changeOrigin: true,
+      ws: true,
+    })
+  );
+
+  app.use(
     "/api",
     createProxyMiddleware({
       target: "http://localhost:8000",

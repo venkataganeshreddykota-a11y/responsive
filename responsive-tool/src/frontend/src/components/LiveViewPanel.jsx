@@ -106,6 +106,9 @@ const emptyCustomDevice = {
   orientation: "portrait",
 };
 
+const DEVICE_CARD_GAP = 16;
+const VIRTUAL_OVERSCAN_PX = 360;
+
 const DEVICE_CATEGORY_LABEL = {
   mobile: "Mobile",
   tablet: "Tablet",
@@ -116,11 +119,25 @@ const DEVICE_CATEGORY_LABEL = {
 function getModalScale(device) {
   if (typeof window === "undefined") return 1;
   const maxWidth = Math.max(280, window.innerWidth - 120);
-  return Math.min(1, maxWidth / device.width);
+  const maxHeight = Math.max(360, window.innerHeight * 0.94 - 92);
+  return Math.min(1, maxWidth / device.width, maxHeight / device.height);
 }
 
 function formatResolution(device) {
   return `${device.width}\u00d7${device.height}`;
+}
+
+function getPreviewWidth(device) {
+  return Number(device?.previewWidth) || Math.min(620, Math.max(180, Number(device?.width || 390) * 0.42));
+}
+
+function getCardWidth(device, previewWidth = getPreviewWidth(device)) {
+  return Math.ceil(Math.max(220, previewWidth + 16));
+}
+
+function staticPreviewSrc(src) {
+  if (!src) return "";
+  return src.startsWith("data:") ? src : `data:image/png;base64,${src}`;
 }
 
 function issueMatchesCategory(issue, statusKey) {
@@ -320,10 +337,9 @@ function useDriveUpload() {
       .catch(() => {});
   };
 
-  const upload = async (device, screenshots) => {
-    const src = screenshots?.[device.statusKey];
+  const upload = async (device, src) => {
     if (!src) {
-      window.alert(`No ${device.label} screenshot available. Run Analyze first.`);
+      window.alert(`No ${device.label} screenshot is available yet. Wait for Live View to finish loading, then try again.`);
       return;
     }
     setDeviceState(device.key, { loading: true, status: null, link: "" });
@@ -363,7 +379,6 @@ export default function LiveViewPanel({
   issueDetailsOpen,
   onToggleIssueDetails,
 }) {
-  const [scrollSync, setScrollSync] = useState({ source: "", ratio: 0 });
   const [reloadTokens, setReloadTokens] = useState({});
   const [favorite, setFavorite] = useState(false);
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -372,9 +387,15 @@ export default function LiveViewPanel({
   const [selectedKeys, setSelectedKeys] = useState(DEFAULT_SELECTED);
   const [activeKey, setActiveKey] = useState(DEFAULT_SELECTED[0]);
   const [modalDevice, setModalDevice] = useState(null);
+  const [virtualRange, setVirtualRange] = useState({ start: 0, end: DEFAULT_SELECTED.length - 1 });
   const deviceStripRef = useRef(null);
+  const deviceFrameRefs = useRef({});
+  const virtualRafRef = useRef(null);
   const initialPublishRef = useRef(false);
-  const statusMap = Object.fromEntries((deviceStatus || []).map((d) => [d.device, d]));
+  const statusMap = useMemo(
+    () => Object.fromEntries((deviceStatus || []).map((d) => [d.device, d])),
+    [deviceStatus]
+  );
   const { driveConnected, getDeviceState, toast, dismissToast, connect: driveConnect, upload: driveUpload } = useDriveUpload();
 
   const allDevices = useMemo(
@@ -393,15 +414,13 @@ export default function LiveViewPanel({
     [allDevices, selectedKeys]
   );
 
-  const customGroup = customDevices.length
-    ? [{ group: "Custom", Icon: FiGrid, devices: customDevices }]
-    : [];
-
-  const groupedDevices = [...PRESET_GROUPS, ...customGroup];
-
-  const handleScrollSync = useCallback((source, ratio) => {
-    setScrollSync({ source, ratio });
-  }, []);
+  const groupedDevices = useMemo(
+    () => [
+      ...PRESET_GROUPS,
+      ...(customDevices.length ? [{ group: "Custom", Icon: FiGrid, devices: customDevices }] : []),
+    ],
+    [customDevices]
+  );
 
   const publishActiveDevice = useCallback((device) => {
     if (!device) return;
@@ -422,6 +441,69 @@ export default function LiveViewPanel({
       publishActiveDevice(selectedDevices[0]);
     }
   }, [activeKey, publishActiveDevice, selectedDevices, selectedKeys]);
+
+  useEffect(() => {
+    const strip = deviceStripRef.current;
+    if (!strip) return undefined;
+
+    const updateVirtualRange = () => {
+      virtualRafRef.current = null;
+      const viewStart = Math.max(0, strip.scrollLeft - VIRTUAL_OVERSCAN_PX);
+      const viewEnd = strip.scrollLeft + strip.clientWidth + VIRTUAL_OVERSCAN_PX;
+      let cursor = 0;
+      let start = 0;
+      let end = selectedDevices.length - 1;
+
+      for (let index = 0; index < selectedDevices.length; index += 1) {
+        const width = getCardWidth(selectedDevices[index]);
+        const itemEnd = cursor + width;
+        if (itemEnd >= viewStart) {
+          start = index;
+          break;
+        }
+        cursor += width + DEVICE_CARD_GAP;
+      }
+
+      cursor = 0;
+      for (let index = 0; index < selectedDevices.length; index += 1) {
+        const width = getCardWidth(selectedDevices[index]);
+        const itemStart = cursor;
+        const itemEnd = cursor + width;
+        if (itemStart <= viewEnd) end = index;
+        if (itemStart > viewEnd) break;
+        cursor += width + DEVICE_CARD_GAP;
+      }
+
+      setVirtualRange((prev) => (
+        prev.start === start && prev.end === end ? prev : { start, end }
+      ));
+    };
+
+    const scheduleVirtualRange = () => {
+      if (virtualRafRef.current) return;
+      virtualRafRef.current = window.requestAnimationFrame(updateVirtualRange);
+    };
+
+    scheduleVirtualRange();
+    strip.addEventListener("scroll", scheduleVirtualRange, { passive: true });
+    window.addEventListener("resize", scheduleVirtualRange);
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(scheduleVirtualRange);
+      resizeObserver.observe(strip);
+    }
+
+    return () => {
+      strip.removeEventListener("scroll", scheduleVirtualRange);
+      window.removeEventListener("resize", scheduleVirtualRange);
+      resizeObserver?.disconnect();
+      if (virtualRafRef.current) {
+        window.cancelAnimationFrame(virtualRafRef.current);
+        virtualRafRef.current = null;
+      }
+    };
+  }, [selectedDevices]);
 
   useEffect(() => {
     if (!modalDevice) return undefined;
@@ -467,7 +549,7 @@ export default function LiveViewPanel({
     selectedDevices.forEach((device) => reloadDevice(device.key));
   };
 
-  const handleDeviceStripWheel = (event) => {
+  const handleDeviceStripWheel = useCallback((event) => {
     const strip = deviceStripRef.current;
     if (!strip) return;
 
@@ -480,7 +562,7 @@ export default function LiveViewPanel({
 
     event.preventDefault();
     strip.scrollLeft += event.deltaX || event.deltaY;
-  };
+  }, []);
 
   const toggleDevice = (key) => {
     setSelectedKeys((prev) => {
@@ -525,10 +607,23 @@ export default function LiveViewPanel({
     });
   };
 
+  const setDeviceFrameRef = useCallback((key) => (instance) => {
+    if (instance) {
+      deviceFrameRefs.current[key] = instance;
+      return;
+    }
+    delete deviceFrameRefs.current[key];
+  }, []);
+
+  const getCurrentScreenshotSrc = useCallback((device) => {
+    const liveSrc = deviceFrameRefs.current[device.key]?.capturePng?.();
+    return liveSrc || screenshots?.[device.statusKey] || "";
+  }, [screenshots]);
+
   const downloadScreenshot = (device) => {
-    const src = screenshots?.[device.statusKey];
+    const src = getCurrentScreenshotSrc(device);
     if (!src) {
-      window.alert(`No ${device.label} screenshot is available yet. Run Analyze first, then try again.`);
+      window.alert(`No ${device.label} screenshot is available yet. Wait for Live View to finish loading, then try again.`);
       return;
     }
 
@@ -542,6 +637,10 @@ export default function LiveViewPanel({
     document.body.appendChild(link);
     link.click();
     link.remove();
+  };
+
+  const uploadCurrentScreenshot = (device) => {
+    driveUpload(device, getCurrentScreenshotSrc(device));
   };
 
   const downloadDevicesReport = () => {
@@ -568,7 +667,7 @@ export default function LiveViewPanel({
     <div className="overflow-hidden rounded-lg border border-surface-border bg-gradient-to-br from-white via-stone-50 to-orange-50/40 shadow-glass">
       {/* Drive "Saved" toast popup */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-[10000] flex items-start gap-3 rounded-xl border border-green-200 bg-white px-4 py-3 shadow-2xl animate-fade-in"
+        <div className="fixed bottom-6 right-6 z-[10000] flex items-start gap-3 rounded-xl border border-green-200 bg-white px-4 py-3 shadow-lg animate-fade-in"
           style={{ minWidth: 280, maxWidth: 360 }}
         >
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
@@ -607,7 +706,7 @@ export default function LiveViewPanel({
           </span>
         </div>
       )}
-      <div className="border-b border-surface-border bg-white/85 px-3 py-3 backdrop-blur">
+      <div className="border-b border-surface-border bg-white/95 px-3 py-3">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <ToolbarButton title="Browser back" onClick={() => window.history.back()} icon={FiArrowLeft} />
@@ -781,19 +880,34 @@ export default function LiveViewPanel({
         className="overflow-x-auto overscroll-contain px-4 py-4 scrollbar-thin"
       >
         <div className="flex min-w-max items-start gap-4">
-          {selectedDevices.map((device) => {
+          {selectedDevices.map((device, index) => {
             const isModal = modalDevice?.key === device.key;
             const modalScale = isModal ? getModalScale(device) : null;
             const previewWidth = isModal
               ? Math.round(device.width * modalScale)
-              : device.previewWidth;
+              : getPreviewWidth(device);
+            const cardWidth = getCardWidth(device, previewWidth);
+            const isActivePreview = isModal || activeKey === device.key;
+            const shouldMount = selectedDevices.length <= 8 || isActivePreview || (index >= virtualRange.start && index <= virtualRange.end);
             const ds = statusMap[device.statusKey];
+            const screenshot = screenshots?.[device.statusKey];
+
+            if (!shouldMount) {
+              return (
+                <div
+                  key={device.key}
+                  className="shrink-0"
+                  style={{ width: cardWidth, height: Math.round(device.height * (previewWidth / device.width)) + 88 }}
+                  aria-hidden="true"
+                />
+              );
+            }
 
             return (
               <Fragment key={device.key}>
               {isModal && (
                 <div
-                  className="fixed inset-0 z-[9998] bg-black/55 backdrop-blur-sm animate-fade-in"
+                  className="fixed inset-0 z-[9998] bg-black/55 animate-fade-in"
                   onClick={() => setModalDevice(null)}
                   onWheel={(event) => {
                     event.preventDefault();
@@ -808,10 +922,10 @@ export default function LiveViewPanel({
                 onWheel={(event) => {
                   if (isModal) event.stopPropagation();
                 }}
-                style={isModal ? { width: previewWidth + 16 } : undefined}
-                className={`flex shrink-0 cursor-pointer flex-col gap-2 rounded-lg bg-white/55 p-2 shadow-sm ring-1 transition hover:bg-white/80 ${
+                style={{ width: isModal ? previewWidth + 16 : cardWidth }}
+                className={`flex shrink-0 cursor-pointer flex-col gap-2 rounded-lg bg-white/70 p-2 ring-1 transition-colors hover:bg-white/90 ${
                   isModal
-                    ? "fixed left-1/2 top-1/2 z-[9999] max-h-[94vh] max-w-[94vw] -translate-x-1/2 -translate-y-1/2 overflow-auto border border-surface-border bg-white shadow-2xl animate-slide-up"
+                    ? "fixed left-1/2 top-1/2 z-[9999] max-h-[94vh] max-w-[94vw] -translate-x-1/2 -translate-y-1/2 overflow-hidden border border-surface-border bg-white shadow-lg animate-slide-up"
                     : ""
                 } ${
                   activeKey === device.key ? "ring-2 ring-accent-300" : STATUS_RING[ds?.status] || "ring-surface-border"
@@ -834,10 +948,14 @@ export default function LiveViewPanel({
                         publishActiveDevice(device);
                         onToggleIssueDetails();
                       }}
-                      className="ml-1 inline-flex h-5 items-center gap-1 rounded-md border border-surface-border bg-white px-1.5 text-[10px] font-semibold text-surface-label shadow-sm transition hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 focus:outline-none focus:ring-1 focus:ring-accent-400/30"
+                      className={`ml-1 inline-flex h-5 items-center gap-1 rounded-md border px-1.5 text-[10px] font-semibold shadow-sm transition focus:outline-none focus:ring-1 focus:ring-accent-400/30 ${
+                        issueDetailsOpen
+                          ? "border-accent-300 bg-accent-50 text-accent-700 hover:bg-accent-100"
+                          : "border-surface-border bg-white text-surface-label hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700"
+                      }`}
                     >
                       <span>{issueDetailsOpen ? "Hide Details" : "View Details"}</span>
-                      <FiChevronDown size={10} className={`transition-transform ${issueDetailsOpen ? "rotate-180" : ""}`} />
+                      <FiChevronDown size={10} className={`transition-transform duration-200 ${issueDetailsOpen ? "rotate-180" : ""}`} />
                     </button>
                   )}
                   {isModal && (
@@ -867,7 +985,7 @@ export default function LiveViewPanel({
                       status={getDeviceState(device.key).status}
                       link={getDeviceState(device.key).link}
                       onConnect={driveConnect}
-                      onUpload={() => driveUpload(device, screenshots)}
+                      onUpload={() => uploadCurrentScreenshot(device)}
                     />
                     <ToolbarButton title="Copy URL" onClick={copyUrl} icon={FiCopy} />
                   </div>
@@ -877,21 +995,48 @@ export default function LiveViewPanel({
                   </div>
                 </div>
 
-                <DeviceFrame
-                  key={`${device.key}-${url}`}
-                  url={url}
-                  deviceKey={device.key}
-                  deviceName={device.label}
-                  width={device.width}
-                  height={device.height}
-                  scale={previewWidth / device.width}
-                  syncSource={scrollSync.source}
-                  syncRatio={scrollSync.ratio}
-                  onScrollSync={handleScrollSync}
-                  status={ds}
-                  variant="workspace"
-                  reloadToken={reloadTokens[device.key]}
-                />
+                {isActivePreview ? (
+                  <DeviceFrame
+                    ref={setDeviceFrameRef(device.key)}
+                    key={`${device.key}-${url}`}
+                    url={url}
+                    deviceKey={device.key}
+                    deviceName={device.label}
+                    width={device.width}
+                    height={device.height}
+                    scale={previewWidth / device.width}
+                    status={ds}
+                    variant="workspace"
+                    reloadToken={reloadTokens[device.key]}
+                    active
+                    liveEnabled
+                    screenshotSrc={screenshot}
+                    streamScale={1}
+                    maxFps={60}
+                    streamFormat="jpeg"
+                    streamQuality={74}
+                  />
+                ) : (
+                  <div
+                    className="overflow-hidden bg-surface-border"
+                    style={{ width: previewWidth, height: Math.round(device.height * (previewWidth / device.width)), contentVisibility: "auto" }}
+                  >
+                    {screenshot ? (
+                      <img
+                        src={staticPreviewSrc(screenshot)}
+                        alt={`${device.label} static preview`}
+                        className="h-full w-full object-cover object-top"
+                        decoding="async"
+                        loading="lazy"
+                        draggable="false"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-stone-50 text-[11px] font-semibold text-surface-muted">
+                        Select to start Live View
+                      </div>
+                    )}
+                  </div>
+                )}
                 {!isModal && (
                   <p className="text-[10px] font-medium text-surface-muted">Double-click to expand device preview</p>
                 )}

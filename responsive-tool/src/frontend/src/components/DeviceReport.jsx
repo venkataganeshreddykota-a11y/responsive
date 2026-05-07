@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { FiChevronDown, FiSmartphone, FiTablet, FiMonitor } from "react-icons/fi";
-import { MdLaptop } from "react-icons/md";
+import { FiChevronDown, FiSmartphone, FiTablet, FiMonitor, FiImage, FiType, FiZap, FiLayout, FiAlertCircle, FiArrowRight } from "react-icons/fi";
+import { MdLaptop, MdOutlineDesktopWindows, MdOutlineAdsClick } from "react-icons/md";
 import {
   HiOutlineXCircle, HiOutlineExclamationTriangle, HiOutlineInformationCircle,
-  HiOutlineCheckCircle,
+  HiOutlineCheckCircle, HiOutlineLightBulb,
 } from "react-icons/hi2";
-import { FiImage, FiType, FiZap, FiLayout, FiAlertCircle } from "react-icons/fi";
-import { MdOutlineDesktopWindows, MdOutlineAdsClick } from "react-icons/md";
 
 // ── config ────────────────────────────────────────────────────────────────────
 const DEVICES = [
@@ -34,40 +32,32 @@ const PRIORITY = {
   low:    { dot: "bg-stone-400", style: "border-l-stone-300 bg-white",        badge: "bg-stone-50 text-stone-600 border-stone-200" },
 };
 
-const CATEGORY_ICON = {
-  viewport:    <MdOutlineDesktopWindows size={13} />,
-  images:      <FiImage size={13} />,
-  typography:  <FiType size={13} />,
-  touch:       <MdOutlineAdsClick size={13} />,
-  performance: <FiZap size={13} />,
-  layout:      <FiLayout size={13} />,
+// Enhanced category config with colors and icons
+const CATEGORY_CFG = {
+  viewport:    { Icon: MdOutlineDesktopWindows, color: "text-violet-600", bg: "bg-violet-50",  border: "border-violet-200", label: "Viewport"    },
+  images:      { Icon: FiImage,                 color: "text-blue-600",   bg: "bg-blue-50",    border: "border-blue-200",   label: "Images"      },
+  typography:  { Icon: FiType,                  color: "text-pink-600",   bg: "bg-pink-50",    border: "border-pink-200",   label: "Typography"  },
+  touch:       { Icon: MdOutlineAdsClick,        color: "text-orange-600", bg: "bg-orange-50",  border: "border-orange-200", label: "Touch"       },
+  performance: { Icon: FiZap,                   color: "text-amber-600",  bg: "bg-amber-50",   border: "border-amber-200",  label: "Performance" },
+  layout:      { Icon: FiLayout,                color: "text-emerald-600",bg: "bg-emerald-50", border: "border-emerald-200",label: "Layout"      },
 };
 
 const SOURCE_LABEL = { playwright: "Live", static: "Static" };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-// issue.device is like "Mobile", "Mobile, Tablet", "Mobile, Tablet, Laptop"
-// deviceLabel is "Mobile" | "Tablet" | "Laptop" | "Desktop"
 function issueMatchesDevice(issue, deviceLabel) {
-  if (!issue.device) return false; // no device = global, handled separately
-  // split by comma and check if any segment matches
+  if (!issue.device) return false;
   return issue.device.split(",").some(
     (seg) => seg.trim().toLowerCase() === deviceLabel.toLowerCase()
   );
 }
 
-// advice item: breakpoint items have device key ("mobile","tablet",...), general suggestions don't
 function adviceMatchesDevice(item, deviceKey) {
-  return item.device === deviceKey; // only exact match; items without device are general
+  return item.device === deviceKey;
 }
 
 function bucketLabel(deviceKey) {
-  return {
-    mobile: "Mobile",
-    tablet: "Tablet",
-    laptop: "Laptop",
-    desktop: "Desktop",
-  }[deviceKey] || deviceKey;
+  return { mobile: "Mobile", tablet: "Tablet", laptop: "Laptop", desktop: "Desktop" }[deviceKey] || deviceKey;
 }
 
 function formatResolution(device) {
@@ -85,14 +75,12 @@ function cssHintForDevice(device) {
 
 function projectIssueToSelectedDevice(issue, selectedDevice) {
   if (!selectedDevice) return issue;
-
   const bucket = selectedDevice.statusKey || selectedDevice.key;
   const label = selectedDevice.label;
   const resolution = formatResolution(selectedDevice);
   const bucketText = bucketLabel(bucket);
   const bucketRegex = new RegExp(`\\b${bucket}\\b`, "ig");
   const bucketLabelRegex = new RegExp(`\\b${bucketText}\\b`, "g");
-
   return {
     ...issue,
     title: (issue.title || "").replace(bucketRegex, label),
@@ -113,6 +101,48 @@ function projectAdviceToSelectedDevice(item, selectedDevice) {
     css_hint: cssHintForDevice(selectedDevice) || item.css_hint,
     tip: item.tip || `Tune layout rules for ${resolution} and verify this preset in Live View.`,
   };
+}
+
+// ── GeneralFixItem — enhanced card ────────────────────────────────────────────
+function GeneralFixItem({ item, index }) {
+  const cfg = CATEGORY_CFG[item.category] || {
+    Icon: HiOutlineLightBulb,
+    color: "text-accent-600",
+    bg: "bg-accent-50",
+    border: "border-accent-200",
+    label: "Tip",
+  };
+  const { Icon } = cfg;
+
+  return (
+    <div className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-surface-border bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-200 hover:shadow-md">
+      {/* subtle gradient accent top bar */}
+      <div className={`absolute inset-x-0 top-0 h-0.5 rounded-t-xl ${cfg.bg.replace("bg-", "bg-gradient-to-r from-")} opacity-80`} />
+
+      <div className="flex items-start gap-3">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${cfg.bg} ${cfg.border} ${cfg.color}`}>
+          <Icon size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cfg.bg} ${cfg.border} ${cfg.color}`}>
+              {cfg.label}
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs font-semibold leading-snug text-surface-body">{item.title}</p>
+        </div>
+      </div>
+
+      {item.detail && (
+        <p className="text-xs leading-relaxed text-surface-label">{item.detail}</p>
+      )}
+
+      <div className="flex items-center gap-1 text-[11px] font-medium text-surface-muted group-hover:text-accent-600 transition-colors">
+        <FiArrowRight size={11} />
+        Apply fix
+      </div>
+    </div>
+  );
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -158,30 +188,8 @@ function BreakpointFixItem({ item }) {
   );
 }
 
-function GeneralFixItem({ item }) {
-  return (
-    <div className="flex gap-3 rounded-lg border border-surface-border bg-white p-3 shadow-sm">
-      <span className="mt-0.5 shrink-0 text-surface-muted">
-        {CATEGORY_ICON[item.category] || <FiAlertCircle size={13} />}
-      </span>
-      <div>
-        <p className="text-xs font-semibold text-surface-body">{item.title}</p>
-        {item.detail && <p className="mt-0.5 text-xs leading-relaxed text-surface-label">{item.detail}</p>}
-      </div>
-    </div>
-  );
-}
-
 // ── single device card ────────────────────────────────────────────────────────
-function DeviceTable({
-  device,
-  deviceStatus,
-  issues,
-  advice,
-  focused = false,
-  detailsExpanded,
-  onToggleDetails,
-}) {
+function DeviceTable({ device, deviceStatus, issues, advice, focused = false, detailsExpanded, onToggleDetails }) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const { key, statusKey = key, label, width, Icon } = device;
   const expanded = detailsExpanded ?? localExpanded;
@@ -191,12 +199,10 @@ function DeviceTable({
   const statusCfg = ds ? (STATUS_CFG[ds.status] || STATUS_CFG.needs_fix) : null;
   const matchingLabel = bucketLabel(statusKey);
 
-  // only issues that explicitly mention this device
   const deviceIssues = (issues || [])
     .filter((iss) => issueMatchesDevice(iss, matchingLabel))
     .map((iss) => projectIssueToSelectedDevice(iss, focused ? device : null));
 
-  // only breakpoint fixes for this device (items with device === key)
   const deviceFixes = (advice || [])
     .filter((a) => adviceMatchesDevice(a, statusKey))
     .map((item) => projectAdviceToSelectedDevice(item, focused ? device : null));
@@ -317,21 +323,11 @@ function DeviceTable({
 }
 
 // ── exported component ────────────────────────────────────────────────────────
-export default function DeviceReport({
-  issues,
-  issueGroups,
-  advice,
-  deviceStatus,
-  selectedDevice,
-  detailsExpanded,
-  onToggleDetails,
-}) {
-  // flatten issueGroups into flat issues list if needed
+export default function DeviceReport({ issues, issueGroups, advice, deviceStatus, selectedDevice, detailsExpanded, onToggleDetails }) {
   const flatIssues = issues?.length
     ? issues
     : (issueGroups || []).flatMap((g) => g.issues || []);
 
-  // general suggestions = advice items with no device field
   const generalSuggestions = (advice || []).filter((a) => !a.device);
 
   return (
@@ -356,20 +352,6 @@ export default function DeviceReport({
         ))}
       </div>
 
-      {/* General suggestions - shown once below all cards */}
-      {generalSuggestions.length > 0 && (
-        <div className="panel p-4">
-          <p className="section-label mb-3">
-            General Improvements
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {generalSuggestions.map((item, i) => (
-              <GeneralFixItem key={i} item={item} />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
-

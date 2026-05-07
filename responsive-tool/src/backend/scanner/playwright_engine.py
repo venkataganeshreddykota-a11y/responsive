@@ -5,6 +5,12 @@ import tempfile
 
 logger = logging.getLogger(__name__)
 
+from .responsive_patches import (
+    EXTRACT_RENDERED_PAGE_JS,
+    build_css_patch,
+    detect_rendered_issues,
+)
+
 # Google Drive folder ID where screenshots will be uploaded.
 # Set GDRIVE_SCREENSHOTS_FOLDER_ID in your .env; leave empty to upload to Drive root.
 _GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_SCREENSHOTS_FOLDER_ID", "")
@@ -13,14 +19,96 @@ _GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_SCREENSHOTS_FOLDER_ID", "")
 _DRIVE_ENABLED = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"))
 
 VIEWPORTS = [
-    {"name": "mobile",  "width": 375,  "height": 812,  "is_mobile": True,  "device_scale_factor": 2},
-    {"name": "tablet",  "width": 768,  "height": 1024, "is_mobile": True,  "device_scale_factor": 2},
-    {"name": "laptop",  "width": 1280, "height": 800,  "is_mobile": False, "device_scale_factor": 1},
-    {"name": "desktop", "width": 1440, "height": 900,  "is_mobile": False, "device_scale_factor": 1},
+    {"name": "mobile",  "width": 390,  "height": 844,  "device_key": "iphone-12-pro", "label": "iPhone 12 Pro"},
+    {"name": "tablet",  "width": 768,  "height": 1024, "device_key": "ipad", "label": "iPad"},
+    {"name": "laptop",  "width": 1280, "height": 800,  "device_key": "laptop", "label": "Desktop Chrome"},
+    {"name": "desktop", "width": 1440, "height": 900,  "device_key": "desktop", "label": "Desktop Chrome"},
 ]
 
 PAGE_TIMEOUT    = 30_000
 WAIT_AFTER_LOAD = 2_000
+
+DEVICE_DESCRIPTOR_ALIASES = {
+    "iphone-se": "iPhone SE",
+    "iphone-12-pro": "iPhone 12 Pro",
+    "iphone-15": "iPhone 14",
+    "iphone-plus": "iPhone 8 Plus",
+    "iphone-15-pro-max": "iPhone 14 Pro Max",
+    "pixel-7": "Pixel 7",
+    "pixel-9": "Pixel 7",
+    "galaxy-s22": "Galaxy S8",
+    "galaxy-s24-ultra": "Galaxy S9+",
+    "oneplus-11": "Pixel 7",
+    "ipad-mini": "iPad Mini",
+    "ipad": "iPad",
+    "ipad-air": "iPad (gen 7)",
+    "ipad-pro-11": "iPad Pro 11",
+    "ipad-pro-13": "iPad Pro 11",
+    "surface-duo": "Galaxy Tab S4",
+}
+
+MOBILE_CHROME_USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+)
+
+DESKTOP_CHROME_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+
+def _device_context_options(playwright, *, device_key="", label="", width=390, height=844):
+    key = (device_key or "").strip().lower()
+    descriptor_name = DEVICE_DESCRIPTOR_ALIASES.get(key)
+    if not descriptor_name and label:
+        normalized_label = label.strip().lower()
+        for candidate in playwright.devices:
+            if candidate.lower() == normalized_label:
+                descriptor_name = candidate
+                break
+
+    if descriptor_name and descriptor_name in playwright.devices:
+        options = dict(playwright.devices[descriptor_name])
+        options["viewport"] = {"width": int(width), "height": int(height)}
+        options["screen"] = {"width": int(width), "height": int(height)}
+        return options
+
+    is_mobile = int(width) <= 540
+    is_tablet = 541 <= int(width) <= 1024 and int(height) >= 700
+    return {
+        "viewport": {"width": int(width), "height": int(height)},
+        "screen": {"width": int(width), "height": int(height)},
+        "is_mobile": is_mobile or is_tablet,
+        "has_touch": is_mobile or is_tablet,
+        "device_scale_factor": 3 if is_mobile else 2 if is_tablet else 1,
+        "user_agent": MOBILE_CHROME_USER_AGENT if is_mobile or is_tablet else DESKTOP_CHROME_USER_AGENT,
+    }
+
+
+def render_device_screenshot(url: str, *, device_key="", label="", width=390, height=844, full_page=True) -> bytes:
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(**_device_context_options(
+            pw,
+            device_key=device_key,
+            label=label,
+            width=width,
+            height=height,
+        ))
+        page = context.new_page()
+        try:
+            try:
+                page.goto(url, wait_until="networkidle", timeout=PAGE_TIMEOUT)
+            except PWTimeout:
+                page.goto(url, wait_until="load", timeout=PAGE_TIMEOUT)
+            page.wait_for_timeout(WAIT_AFTER_LOAD)
+            return page.screenshot(full_page=full_page, type="png")
+        finally:
+            context.close()
+            browser.close()
 
 _JS_OVERFLOW = """
 () => {
@@ -182,16 +270,13 @@ def run_playwright_scan(url: str) -> dict:
         for vp in VIEWPORTS:
             device = vp["name"]
             logger.info("Playwright scanning %s @ %dpx", device, vp["width"])
-            context = browser.new_context(
-                viewport={"width": vp["width"], "height": vp["height"]},
-                is_mobile=vp["is_mobile"],
-                device_scale_factor=vp["device_scale_factor"],
-                user_agent=(
-                    "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36"
-                    if vp["is_mobile"] else
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-                ),
-            )
+            context = browser.new_context(**_device_context_options(
+                pw,
+                device_key=vp.get("device_key", device),
+                label=vp.get("label", device),
+                width=vp["width"],
+                height=vp["height"],
+            ))
             page = context.new_page()
             try:
                 page.goto(url, wait_until="networkidle", timeout=PAGE_TIMEOUT)
