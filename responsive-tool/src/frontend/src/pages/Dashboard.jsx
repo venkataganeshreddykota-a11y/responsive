@@ -10,6 +10,7 @@ import { TbWorld } from "react-icons/tb";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 import { loadJsonArray, saveJson } from "../utils/storage";
+import PeacockBanner from "../components/PeacockBanner";
 
 const DASHBOARD_CACHE_KEY = "rt_dashboard_urls";
 
@@ -84,11 +85,8 @@ export default function Dashboard() {
 
       <main className="flex flex-1 flex-col gap-6 overflow-y-auto p-6 scrollbar-thin">
 
-        {/* Hero row */}
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold text-surface-body">Dashboard</h1>
-          <p className="text-sm text-surface-muted">Overview of your responsiveness scans</p>
-        </div>
+        {/* Hero row with animated peacock banner */}
+        <PeacockBanner />
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
