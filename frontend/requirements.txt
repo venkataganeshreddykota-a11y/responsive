@@ -1,0 +1,17 @@
+# ── Frontend Requirements ──────────────────────────────────
+# Node.js >= 18.x
+# Install all dependencies with: npm install
+
+# ── Runtime Dependencies ───────────────────────────────────
+axios@^1.6.0                    # HTTP client for API calls
+bootstrap@^5.3.3                # CSS framework
+react@^18.2.0                   # UI library
+react-dom@^18.2.0               # React DOM renderer
+react-icons@^5.6.0              # Icon library
+react-router-dom@^6.22.0        # Client-side routing
+react-scripts@5.0.1             # CRA build toolchain
+
+# ── Dev Dependencies ───────────────────────────────────────
+autoprefixer@^10.5.0            # PostCSS autoprefixer
+http-proxy-middleware@^2.0.6    # Dev server proxy (API + WebSocket)
+postcss@^8.5.12                 # CSS transformation tool

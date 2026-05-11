@@ -1,0 +1,18 @@
+Django>=4.2
+channels>=4.1
+daphne>=4.1
+djangorestframework>=3.14
+django-cors-headers>=4.3
+mysqlclient>=2.2
+python-dotenv>=1.0
+djangorestframework-simplejwt>=5.3
+Pillow>=10.0
+requests>=2.31
+beautifulsoup4>=4.12
+cssutils>=2.7
+playwright>=1.44
+google-api-python-client>=2.120.0
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+
+# Frontend UI requirement: use Bootstrap 5.3.3; do not use Tailwind CSS.

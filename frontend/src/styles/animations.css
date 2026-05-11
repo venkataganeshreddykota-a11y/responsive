@@ -1,0 +1,18 @@
+/* Custom animations */
+@keyframes shimmer {
+  0% { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-shimmer-bar {
+  animation: shimmer 1.4s infinite linear;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
